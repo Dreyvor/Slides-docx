@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "presentation-transcript-docx"
+version = "0.1.0"
+description = "Create slide-aligned DOCX transcripts from presentation videos and WebVTT files"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "opencv-python>=4.8",
+    "platformdirs>=4.0",
+    "python-docx>=1.1",
+]
+
+[project.scripts]
+slides-docx = "slides_docx.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["slides_docx*"]

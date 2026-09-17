@@ -1,107 +1,237 @@
 # Presentation Transcript to DOCX
 
-Create a structured Word document from a recorded presentation and its WebVTT (`.vtt`) transcript.
+Create a structured Word document from a recorded presentation and its WebVTT (`.vtt`) transcript. The generated document alternates between a slide screenshot on a landscape page and editable transcript text on a portrait page.
 
-The tool detects slide changes in the presentation video, associates transcript segments with each slide, extracts a screenshot of each slide, and generates a `.docx` document containing alternating slide images and editable transcript text.
-
-The resulting document follows this structure:
-
-```text
-Slide 1 screenshot
-------------------
-Slide 1 — 00:00:00
-Transcript associated with slide 1
-
-Slide 2 screenshot
-------------------
-Slide 2 — 00:02:34
-Transcript associated with slide 2
-
-...
-```
-
-Slide screenshots are placed alone on landscape pages. Transcript pages contain normal selectable and editable Word text.
-
-## Features
-
-* Detect slide changes automatically from a presentation video
-* Use an existing WebVTT (`.vtt`) transcript
-* Preserve the timestamp at which each slide appears
-* Associate transcript segments with the corresponding slide
-* Extract a representative screenshot for every slide
-* Capture screenshots shortly before the next slide change so that animations and bullet points are more likely to be fully visible
-* Configurable screenshot offset with `--lead`
-* Handle short-duration slides automatically
-* Optionally crop the video to analyze only the presentation area
-* Generate a Microsoft Word `.docx` file
-* Place slide screenshots alone on landscape pages
-* Place transcripts on portrait pages
-* Keep transcript text fully selectable, editable and copyable
-* Run entirely locally
-* No API or cloud service required
+The tool can visually select the slide area once and reuse it across recordings with the same layout. The selected area is applied both when detecting slide changes and when extracting screenshots for the DOCX.
 
 ## Processing pipeline
 
 ```mermaid
 flowchart TD
-    video["presentation.mp4<br/>Recorded presentation"]
-    vtt["presentation.vtt<br/>Transcript with cue timestamps"]
-    detect["detect_slides.sh<br/>FFmpeg slide-change detection"]
-    times["slide_times.txt<br/>Slide boundaries · review or edit"]
-    merge["vttslidesdocx.py<br/>Assign transcript cues to slides<br/>Extract screenshots with FFmpeg<br/>Build document with python-docx"]
-    docx["presentation.docx<br/>Landscape slide images<br/>Portrait editable transcript pages"]
+    video["lecture.mp4<br/>Recorded presentation"]
+    select["slides-docx select<br/>Choose the slide area"]
+    profile["Shared crop profile<br/>User configuration directory"]
+    detect["slides-docx detect<br/>FFmpeg scene detection"]
+    times["lecture.slide-times.txt<br/>Reviewable slide boundaries"]
+    vtt["lecture.vtt<br/>Timestamped transcript"]
+    build["slides-docx build<br/>Screenshots + transcript"]
+    docx["lecture.docx<br/>Landscape slides + editable text"]
 
+    video --> select --> profile
     video --> detect
-    detect --> times
-    times --> merge
-    vtt --> merge
-    video -->|Video for screenshots| merge
-    merge --> docx
+    profile --> detect --> times
+    video --> build
+    profile --> build
+    times --> build
+    vtt --> build --> docx
 ```
-
-Slide detection uses the video; the VTT keeps its timestamps so the Python script can match the spoken text to each slide. Review or edit `slide_times.txt` before generating the document, and reuse it when regenerating the DOCX.
 
 ## Requirements
 
-The project requires:
+- [Python 3.10 or newer](https://www.python.org/downloads/)
+- [FFmpeg and FFprobe](https://ffmpeg.org/download.html), available on `PATH`
+- A desktop session for visual crop selection
 
-* [Python 3](https://www.python.org/downloads/) — downloads and installation instructions
-* [FFmpeg and FFprobe](https://ffmpeg.org/download.html) — download options for macOS, Linux, and Windows
-* [python-docx](https://python-docx.readthedocs.io/en/latest/user/install.html) — installed through `requirements.txt` below
-
-FFmpeg normally includes `ffprobe`. Install these system tools separately; `requirements.txt` installs only the Python dependencies. Both `ffmpeg` and `ffprobe` must be available on your `PATH`.
-
-### macOS
-
-The easiest way to install FFmpeg is with [Homebrew](https://brew.sh/):
-
-```bash
-brew install ffmpeg
-```
-
-Verify the installation:
-
-```bash
-ffmpeg -version
-ffprobe -version
-```
+The Python dependencies (`python-docx`, `opencv-python`, and `platformdirs`) are installed automatically with the application.
 
 ## Installation
 
-Clone the repository:
+[`pipx`](https://pipx.pypa.io/latest/how-to/install-pipx.html) installs the application in an isolated environment and makes `slides-docx` available in every terminal.
+
+### macOS
+
+Install FFmpeg and pipx with [Homebrew](https://brew.sh/):
+
+```bash
+brew install ffmpeg pipx
+pipx ensurepath
+```
+
+Open a new terminal, clone this repository, enter it, and install the application:
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/presentation-transcript-docx.git
 cd presentation-transcript-docx
+pipx install .
 ```
 
-Make the scripts executable:
+Finder can open a terminal in a lecture folder through **Services → New Terminal at Folder**. If the action is hidden, enable it under **System Settings → Keyboard → Keyboard Shortcuts → Services**.
+
+### Linux
+
+On recent Ubuntu or Debian systems:
 
 ```bash
-chmod +x detect_slides.sh vttslidesdocx.py
+sudo apt update
+sudo apt install ffmpeg pipx
+pipx ensurepath
 ```
 
-Create and activate a Python virtual environment, then install the Python dependencies from [requirements.txt](requirements.txt):
+Other distributions provide equivalent FFmpeg and pipx packages. Open a new terminal, then install from the cloned repository:
+
+```bash
+pipx install .
+```
+
+The exact file-manager action varies by desktop environment; it is commonly named **Open in Terminal**.
+
+### Windows
+
+Install [Python](https://www.python.org/downloads/windows/) and [FFmpeg](https://ffmpeg.org/download.html), and ensure `ffmpeg` and `ffprobe` are on `PATH`. Then install pipx from PowerShell:
+
+```powershell
+py -m pip install --user pipx
+py -m pipx ensurepath
+```
+
+Restart the terminal, clone the repository, enter it, and run:
+
+```powershell
+pipx install .
+```
+
+On Windows 11, right-click inside a lecture folder in File Explorer and choose **Open in Terminal**.
+
+Verify the installation on any operating system:
+
+```bash
+slides-docx --version
+ffmpeg -version
+ffprobe -version
+```
+
+To reinstall after updating the repository, or to uninstall:
+
+```bash
+pipx install --force .
+pipx uninstall presentation-transcript-docx
+```
+
+## Quick start
+
+Open a terminal in the folder containing `lecture.mp4` and `lecture.vtt`.
+
+Select the slide area once for a recording layout:
+
+```bash
+slides-docx select lecture.mp4 --profile university
+```
+
+Drag a rectangle around the slides, then press Enter or Space. Press `C` to cancel without changing the saved configuration.
+
+For every lecture that uses this layout, run:
+
+```bash
+slides-docx detect lecture.mp4
+slides-docx build lecture.mp4 lecture.vtt
+```
+
+This creates:
+
+```text
+lecture.slide-times.txt
+lecture.docx
+```
+
+`lecture.slide-times.txt` can be reviewed or edited before building the DOCX. Slide 1 implicitly begins at `0`; each number in the file marks the appearance of a new slide.
+
+## Selecting and reusing slide areas
+
+The selector uses a frame at 30 seconds by default. Choose another frame with seconds, `MM:SS`, or `HH:MM:SS`:
+
+```bash
+slides-docx select lecture.mp4 --profile university --at 12:30
+```
+
+The selected rectangle is stored in the operating system's user configuration directory rather than beside every video:
+
+- macOS: `~/Library/Application Support/slides-docx/config.json`
+- Linux: `$XDG_CONFIG_HOME/slides-docx/config.json` or `~/.config/slides-docx/config.json`
+- Windows: `%APPDATA%\slides-docx\config.json`
+
+The most recently selected profile becomes active. List, activate, or delete profiles with:
+
+```bash
+slides-docx profiles
+slides-docx profiles activate university
+slides-docx profiles delete zoom
+```
+
+An active profile cannot be deleted until another profile is activated. A saved crop scales automatically for videos with the same aspect ratio. Videos with a materially different aspect ratio require a new selection.
+
+Detection records the profile name and fingerprint in the timestamp file. If that profile is changed before building the DOCX, the build stops rather than silently using different screenshots. Rerun detection or explicitly select the intended crop.
+
+## Slide detection
+
+The default scene-change threshold is `12`. Use a higher value for fewer detections when animations or bullet reveals cause false changes:
+
+```bash
+slides-docx detect lecture.mp4 --threshold 14
+```
+
+Use a lower value such as `8` or `10` when real slide changes are missed.
+
+Choose a non-active profile for one run:
+
+```bash
+slides-docx detect lecture.mp4 --profile zoom
+```
+
+Override profiles with a manual FFmpeg crop, or analyze the entire frame:
+
+```bash
+slides-docx detect lecture.mp4 --crop 1600:1080:0:0
+slides-docx detect lecture.mp4 --no-crop
+```
+
+If detection uses an explicit crop, pass the same `--crop` to `build`. This avoids silently generating screenshots from a different region.
+
+## Building the DOCX
+
+The normal command discovers `lecture.slide-times.txt` automatically:
+
+```bash
+slides-docx build lecture.mp4 lecture.vtt
+```
+
+Use custom input or output paths when needed:
+
+```bash
+slides-docx build lecture.mp4 lecture.vtt \
+  --slide-times corrected-times.txt \
+  --output notes.docx
+```
+
+Add the course date with `DD.MM.YYYY`:
+
+```bash
+slides-docx build lecture.mp4 lecture.vtt --date 17.09.2026
+```
+
+This creates `2026_09_17-lecture.docx`.
+
+Screenshots are normally taken five seconds before the following slide appears, which tends to capture completed bullet lists and diagrams. Change that offset with:
+
+```bash
+slides-docx build lecture.mp4 lecture.vtt --lead 2
+```
+
+Short slides are handled automatically by selecting a frame within the slide interval. The final slide uses the end of the video.
+
+## Headless systems
+
+The OpenCV selector needs a graphical desktop. Over SSH, in a container, or on another headless system, use a saved profile or supply a crop manually:
+
+```bash
+slides-docx detect lecture.mp4 --crop 1600:1080:0:0
+slides-docx build lecture.mp4 lecture.vtt --crop 1600:1080:0:0
+```
+
+Use `--no-crop` on both commands when the video contains only the presentation.
+
+## Development installation
+
+For development without pipx:
 
 ```bash
 python3 -m venv .venv
@@ -109,206 +239,22 @@ source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 ```
 
-Run these commands from the repository directory. If you already have an active virtual environment, just run the last command. For help with Python environments or pip, see the [Python Packaging installation guide](https://packaging.python.org/en/latest/tutorials/installing-packages/).
+On Windows, activate the environment with `.venv\Scripts\activate`.
 
-## Input files
-
-You need two files for each presentation:
-
-```text
-presentation.mp4
-presentation.vtt
-```
-
-Other video formats supported by FFmpeg can also be used.
-
-The VTT file should contain timestamped transcript entries such as:
-
-```text
-WEBVTT
-
-00:00:14.081 --> 00:00:27.931
-So, guten Morgen. Ich begrüße Sie zur ersten Vorlesung.
-
-00:00:28.971 --> 00:00:34.831
-I mag katzen.
-```
-
-## Usage
-
-After installing the dependencies, run these two commands from the repository directory:
+The original commands remain available as compatibility wrappers:
 
 ```bash
-./detect_slides.sh presentation.mp4
-python3 vttslidesdocx.py presentation.vtt slide_times.txt presentation.mp4
+./detect_slides.sh lecture.mp4
+python3 vttslidesdocx.py lecture.vtt slide_times.txt lecture.mp4
+python3 select_slides.py lecture.mp4 --profile university
 ```
 
-### 1. Detect slide changes
-
-`detect_slides.sh` runs FFmpeg's scene-change detector and writes `slide_times.txt` in the current directory. To choose another output file:
+Run the automated tests with:
 
 ```bash
-./detect_slides.sh presentation.mp4 my_slide_times.txt
+python3 -m unittest
 ```
-
-Paths containing spaces should be quoted. Use `./detect_slides.sh --help` for options.
-
-The resulting file will look similar to:
-
-```text
-35.240
-92.560
-181.400
-247.080
-```
-
-Each timestamp represents the moment a new slide appears.
-
-Slide 1 is assumed to start at `00:00:00`. If no changes are detected, the timestamp file is empty and the whole video is treated as one slide. An existing timestamp file is replaced only after detection succeeds.
-
-### Adjusting slide detection
-
-The default threshold is `12`. If animations or incremental bullet points cause too many detections, increase it to `14–16`:
-
-```bash
-./detect_slides.sh presentation.mp4 --threshold 14
-```
-
-If real slide changes are missed, decrease it to `8–10`. The accepted range is `0–100`.
-
-### 2. Generate the DOCX
-
-Run:
-
-```bash
-python3 vttslidesdocx.py \
-  presentation.vtt \
-  slide_times.txt \
-  presentation.mp4
-```
-
-If using the virtual environment:
-
-```bash
-.venv/bin/python vttslidesdocx.py \
-  presentation.vtt \
-  slide_times.txt \
-  presentation.mp4
-```
-
-The output filename is optional. By default, `presentation.mp4` produces `presentation.docx` in the same directory as the video. To choose a different output path, supply it as the fourth positional argument:
-
-```bash
-python3 vttslidesdocx.py presentation.vtt slide_times.txt presentation.mp4 notes.docx
-```
-
-Use `--date DD.MM.YYYY` to add the course date to the filename:
-
-```bash
-python3 vttslidesdocx.py presentation.vtt slide_times.txt presentation.mp4 --date 17.09.2026
-```
-
-This creates `2026_09_17-presentation.docx` beside the video. The date also prefixes a custom filename: `notes.docx --date 17.09.2026` produces `2026_09_17-notes.docx` in the chosen output directory. Invalid dates are rejected.
-
-The generated document will contain:
-
-```text
-Landscape page
-    Slide 01 screenshot
-
-Portrait page
-    Slide 01 — 00:00:00.000
-    Transcript...
-
-Landscape page
-    Slide 02 screenshot
-
-Portrait page
-    Slide 02 — 00:00:35.240
-    Transcript...
-
-...
-```
-
-## Screenshot timing
-
-By default, the script captures the screenshot of a slide **5 seconds before the following slide appears**.
-
-For example:
-
-```text
-Slide 4 starts:     00:10:00
-Slide 5 starts:     00:12:30
-Screenshot Slide 4: 00:12:25
-```
-
-This is useful for presentations where bullet points, diagrams or other elements appear progressively.
-
-The delay can be changed with:
-
-```bash
---lead
-```
-
-For example, to capture slides 2 seconds before the next slide change:
-
-```bash
-python3 vttslidesdocx.py \
-  presentation.vtt \
-  slide_times.txt \
-  presentation.mp4 \
-  --lead 2
-```
-
-For very short slides, the script automatically chooses a suitable frame within the slide instead.
-
-## Cropping the presentation
-
-If the video contains additional content such as:
-
-* presenter webcam
-* borders
-* control panels
-* chat windows
-* other screen elements
-
-the screenshot can optionally be cropped.
-
-Use:
-
-```bash
---crop W:H:X:Y
-```
-
-For example:
-
-```bash
-python3 vttslidesdocx.py \
-  presentation.vtt \
-  slide_times.txt \
-  presentation.mp4 \
-  --crop 1600:1080:0:0
-```
-
-This extracts a `1600 × 1080` area starting at coordinates `0,0`.
-
-Use the same crop during detection to prevent movement outside the slides from being interpreted as scene changes. Detection crops before scaling:
-
-```bash
-./detect_slides.sh presentation.mp4 --crop 1600:1080:0:0
-python3 vttslidesdocx.py presentation.vtt slide_times.txt presentation.mp4 --crop 1600:1080:0:0
-```
-
-## Notes
-
-Slide detection is based on visual scene changes and therefore may require some threshold tuning depending on the presentation.
-
-Presentations containing many animations, transitions or progressively appearing elements may generate false slide detections.
-
-Keeping `slide_times.txt` as an intermediate file is useful because it allows the detected slide boundaries to be inspected or manually corrected before generating the final Word document.
-
-Once `slide_times.txt` is correct, the `.docx` can be regenerated without running scene detection again.
 
 ## License
 
-I don't care, do want you want with this project. The AI coded 90% of it, it belongs to the people.
+I don't care, do what you want with this project. The AI coded 90% of it; it belongs to the people.

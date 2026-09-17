@@ -1,0 +1,13 @@
+CODEX_CONTEXT.md
+samples/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+*.docx
+*.slide-times.txt
+slide_times.txt
+slide_times.txt.*
+slide_times*
