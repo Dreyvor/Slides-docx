@@ -4,6 +4,7 @@ from pathlib import Path
 from docx import Document
 from docx.enum.section import WD_ORIENT, WD_SECTION
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.image.exceptions import UnrecognizedImageError
 from docx.shared import Cm, Mm
 
 from .content import read_vtt, screenshot_time, seconds_to_timestamp, transcript_by_slide
@@ -30,7 +31,12 @@ def set_portrait(section):
 def add_slide_image(document, image_path):
     paragraph = document.add_paragraph()
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    paragraph.add_run().add_picture(str(image_path), width=Cm(25))
+    try:
+        paragraph.add_run().add_picture(str(image_path), width=Cm(25))
+    except (OSError, UnrecognizedImageError) as exc:
+        raise SlidesDocxError(
+            f"Could not add the extracted slide image to the DOCX: {image_path}"
+        ) from exc
 
 
 def add_transcript(document, number, start_time, text):
@@ -61,7 +67,9 @@ def build_document(video, vtt, slide_times, duration, output, lead=5.0, crop=Non
         directory = Path(directory)
         for index, (start, _end, capture) in enumerate(ranges):
             number = index + 1
-            screenshot = directory / f"slide_{number:03d}.jpg"
+            # PNG avoids python-docx rejecting valid FFmpeg JPEGs that do not
+            # contain the narrower JFIF/Exif marker layout it expects.
+            screenshot = directory / f"slide_{number:03d}.png"
             print(
                 f"Slide {number:02d}: starts {seconds_to_timestamp(start)}, "
                 f"screenshot {seconds_to_timestamp(capture)}"

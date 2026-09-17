@@ -1,11 +1,13 @@
 import argparse
 import math
+import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
 from . import __version__
 from .content import seconds_to_timestamp, timestamp_to_seconds
+from .contact_sheet import create_contact_sheet
 from .crop import resolve_crop
 from .document import build_document
 from .errors import SlidesDocxError
@@ -116,6 +118,12 @@ def create_parser():
             "use 0 to disable (default: 0.8)"
         ),
     )
+    detect.add_argument(
+        "--no-contact-sheet",
+        action="store_false",
+        dest="contact_sheet",
+        help="Do not create the slide contact sheet",
+    )
     add_crop_arguments(detect)
     detect.set_defaults(handler=handle_detect)
 
@@ -133,6 +141,12 @@ def create_parser():
     profiles.add_argument("action", nargs="?", choices=("list", "delete", "activate"), default="list")
     profiles.add_argument("name", nargs="?")
     profiles.set_defaults(handler=handle_profiles)
+
+    completion = commands.add_parser(
+        "completion", help="Print a shell completion activation script"
+    )
+    completion.add_argument("shell", choices=("bash", "zsh", "fish", "powershell"))
+    completion.set_defaults(handler=handle_completion)
     return parser
 
 
@@ -201,6 +215,17 @@ def handle_detect(args):
     write_timestamp_file(output, times, selection)
     print(f"Detected {len(times)} slide changes.")
     print(f"Wrote: {output}")
+    if args.contact_sheet:
+        contact_output = video.with_name(f"{video.stem}.contact-sheet.jpg")
+        print("Creating contact sheet...")
+        create_contact_sheet(
+            video,
+            times,
+            info.duration,
+            contact_output,
+            crop=selection.ffmpeg_value,
+        )
+        print(f"Created: {contact_output}")
     return 0
 
 
@@ -271,63 +296,34 @@ def handle_profiles(args):
     return 0
 
 
+def handle_completion(args):
+    from .completion import render_completion
+
+    print(render_completion(args.shell), end="")
+    return 0
+
+
+def _handle_completion_query(argv):
+    from .completion import complete
+
+    if len(argv) < 2:
+        return 0
+    try:
+        cursor = int(argv[0])
+    except ValueError:
+        return 0
+    for candidate in complete(create_parser(), argv[1:], cursor):
+        print(candidate)
+    return 0
+
+
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "_complete":
+        return _handle_completion_query(argv[1:])
     parser = create_parser()
     args = parser.parse_args(argv)
     try:
         return args.handler(args)
-    except SlidesDocxError as exc:
-        parser.error(str(exc))
-
-
-def legacy_build_main(argv=None):
-    parser = argparse.ArgumentParser(prog="vttslidesdocx.py")
-    parser.add_argument("vtt", type=Path)
-    parser.add_argument("slide_times", type=Path)
-    parser.add_argument("video", type=Path)
-    parser.add_argument("output", nargs="?", type=Path)
-    parser.add_argument("--lead", type=lead_value, default=5.0)
-    parser.add_argument("--crop")
-    parser.add_argument("--date", type=course_date, metavar="DD.MM.YYYY")
-    args = parser.parse_args(argv)
-    forwarded = argparse.Namespace(
-        video=args.video, vtt=args.vtt, slide_times=args.slide_times,
-        output=args.output, lead=args.lead, crop=args.crop, profile=None,
-        no_crop=False, date=args.date,
-    )
-    try:
-        return handle_build(forwarded)
-    except SlidesDocxError as exc:
-        parser.error(str(exc))
-
-
-def legacy_detect_main(argv=None):
-    parser = argparse.ArgumentParser(prog="detect_slides.sh")
-    parser.add_argument("video", type=Path)
-    parser.add_argument("output", nargs="?", type=Path, default=Path("slide_times.txt"))
-    parser.add_argument("--threshold", type=threshold_value, default=12.0)
-    parser.add_argument(
-        "--min-gap", type=minimum_gap_value, default=MIN_SCENE_CHANGE_GAP
-    )
-    parser.add_argument("--crop")
-    args = parser.parse_args(argv)
-    forwarded = argparse.Namespace(
-        video=args.video, output=args.output, threshold=args.threshold,
-        min_gap=args.min_gap, crop=args.crop, profile=None, no_crop=False,
-    )
-    try:
-        return handle_detect(forwarded)
-    except SlidesDocxError as exc:
-        parser.error(str(exc))
-
-
-def selector_main(argv=None):
-    parser = argparse.ArgumentParser(prog="select_slides.py")
-    parser.add_argument("video", type=Path)
-    parser.add_argument("--profile", default="default")
-    parser.add_argument("--at", type=time_value, default=30.0)
-    args = parser.parse_args(argv)
-    try:
-        return handle_select(args)
     except SlidesDocxError as exc:
         parser.error(str(exc))

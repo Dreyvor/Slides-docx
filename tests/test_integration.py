@@ -57,6 +57,25 @@ class PipelineIntegrationTests(unittest.TestCase):
             ]
             self.assertEqual(len(numeric_lines), 1)
             self.assertAlmostEqual(numeric_lines[0], 2.0, delta=0.15)
+            contact_sheet = root / "lécture recording.contact-sheet.jpg"
+            self.assertTrue(contact_sheet.is_file())
+            contact_image = cv2.imdecode(
+                numpy.frombuffer(contact_sheet.read_bytes(), dtype=numpy.uint8),
+                cv2.IMREAD_COLOR,
+            )
+            self.assertEqual(contact_image.shape[:2], (185, 1040))
+
+            contact_sheet.unlink()
+            without_contact = subprocess.run(
+                [sys.executable, "-m", "slides_docx", "detect", str(video),
+                 "--threshold", "8", "--no-contact-sheet"],
+                cwd=repository, env=env, text=True, capture_output=True,
+            )
+            self.assertEqual(
+                without_contact.returncode, 0,
+                without_contact.stdout + without_contact.stderr,
+            )
+            self.assertFalse(contact_sheet.exists())
 
             build = subprocess.run(
                 [sys.executable, "-m", "slides_docx", "build", str(video), str(vtt)],
@@ -76,33 +95,13 @@ class PipelineIntegrationTests(unittest.TestCase):
             with zipfile.ZipFile(output) as archive:
                 media = [name for name in archive.namelist() if name.startswith("word/media/")]
                 self.assertEqual(len(media), 2)
+                self.assertTrue(all(name.endswith(".png") for name in media))
                 for name in media:
                     image = cv2.imdecode(
                         numpy.frombuffer(archive.read(name), dtype=numpy.uint8),
                         cv2.IMREAD_COLOR,
                     )
                     self.assertEqual(image.shape[:2], (360, 480))
-
-            legacy_times = root / "legacy times.txt"
-            legacy_env = dict(env, PYTHON=sys.executable)
-            legacy_detect = subprocess.run(
-                [repository / "detect_slides.sh", video, legacy_times,
-                 "--threshold", "8", "--crop", "480:360:0:0"],
-                cwd=repository, env=legacy_env, text=True, capture_output=True,
-            )
-            self.assertEqual(
-                legacy_detect.returncode, 0, legacy_detect.stdout + legacy_detect.stderr
-            )
-            legacy_output = root / "legacy.docx"
-            legacy_build = subprocess.run(
-                [sys.executable, repository / "vttslidesdocx.py", vtt, legacy_times,
-                 video, legacy_output, "--crop", "480:360:0:0"],
-                cwd=repository, env=legacy_env, text=True, capture_output=True,
-            )
-            self.assertEqual(
-                legacy_build.returncode, 0, legacy_build.stdout + legacy_build.stderr
-            )
-            self.assertTrue(legacy_output.is_file())
 
             store.set_profile("lecture", make_profile((400, 360, 0, 0), 640, 360))
             changed = subprocess.run(

@@ -1,5 +1,9 @@
 import argparse
+import contextlib
+import io
 import json
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -7,7 +11,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from slides_docx.cli import course_date, handle_select, minimum_gap_value, time_value
+from slides_docx.cli import (
+    course_date,
+    create_parser,
+    handle_select,
+    main,
+    minimum_gap_value,
+    time_value,
+)
+from slides_docx.completion import complete, render_completion
 from slides_docx.content import screenshot_time, timestamp_to_seconds, transcript_by_slide
 from slides_docx.crop import resolve_crop
 from slides_docx.errors import SlidesDocxError
@@ -169,6 +181,132 @@ class SelectorTests(unittest.TestCase):
              patch("slides_docx.cli._store", return_value=store):
             self.assertEqual(handle_select(arguments), 0)
         store.set_profile.assert_not_called()
+
+
+class CompletionTests(unittest.TestCase):
+    def setUp(self):
+        self.parser = create_parser()
+
+    def test_commands_options_and_choices_are_completed_from_parser(self):
+        self.assertEqual(
+            complete(self.parser, ["slides-docx", "de"], 1),
+            ["detect"],
+        )
+        options = complete(
+            self.parser,
+            ["slides-docx", "detect", "lecture.mp4", "--"],
+            3,
+        )
+        self.assertIn("--threshold", options)
+        self.assertIn("--profile", options)
+        self.assertEqual(
+            complete(self.parser, ["slides-docx", "completion", "po"], 2),
+            ["powershell"],
+        )
+
+    def test_used_and_mutually_exclusive_options_are_hidden(self):
+        options = complete(
+            self.parser,
+            [
+                "slides-docx", "detect", "lecture.mp4", "--threshold", "10",
+                "--profile", "room", "--",
+            ],
+            7,
+        )
+        self.assertNotIn("--threshold", options)
+        self.assertNotIn("--profile", options)
+        self.assertNotIn("--crop", options)
+        self.assertNotIn("--no-crop", options)
+        self.assertIn("--min-gap", options)
+
+    def test_saved_profiles_are_completed_for_options_and_actions(self):
+        def names():
+            return ["room", "Lecture Hall", "université"]
+
+        self.assertEqual(
+            complete(
+                self.parser,
+                ["slides-docx", "detect", "lecture.mp4", "--profile", "uni"],
+                4,
+                profile_names=names,
+            ),
+            ["université"],
+        )
+        self.assertEqual(
+            complete(
+                self.parser,
+                ["slides-docx", "profiles", "delete", "Lec"],
+                3,
+                profile_names=names,
+            ),
+            ["Lecture Hall"],
+        )
+
+    def test_file_completion_handles_spaces_unicode_and_expected_types(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            folder = root / "course files"
+            folder.mkdir()
+            (folder / "lécture.vtt").touch()
+            (folder / "lécture.txt").touch()
+            candidates = complete(
+                self.parser,
+                ["slides-docx", "build", "video.mp4", "course files/lé"],
+                3,
+                cwd=root,
+            )
+            self.assertEqual(candidates, [str(Path("course files") / "lécture.vtt")])
+
+    def test_completion_errors_are_silent(self):
+        def broken_profiles():
+            raise SlidesDocxError("broken configuration")
+
+        self.assertEqual(
+            complete(
+                self.parser,
+                ["slides-docx", "select", "video.mp4", "--profile", ""],
+                4,
+                profile_names=broken_profiles,
+            ),
+            [],
+        )
+
+    def test_shell_scripts_register_slides_docx(self):
+        registrations = {
+            "bash": "complete -F _slides_docx_complete slides-docx",
+            "zsh": "compdef _slides_docx_complete slides-docx",
+            "fish": "complete -c slides-docx",
+            "powershell": "Register-ArgumentCompleter -Native -CommandName slides-docx",
+        }
+        for shell, registration in registrations.items():
+            with self.subTest(shell=shell):
+                script = render_completion(shell)
+                self.assertIn(registration, script)
+                self.assertIn("slides-docx _complete", script)
+
+    def test_available_shell_scripts_have_valid_syntax(self):
+        for shell in ("bash", "zsh"):
+            executable = shutil.which(shell)
+            if executable is None:
+                continue
+            with self.subTest(shell=shell):
+                result = subprocess.run(
+                    [executable, "-n"],
+                    input=render_completion(shell),
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_internal_completion_does_not_probe_video(self):
+        output = io.StringIO()
+        with patch("slides_docx.cli.probe_video") as probe, \
+             patch("slides_docx.cli.detect_scene_times") as detect, \
+             contextlib.redirect_stdout(output):
+            self.assertEqual(main(["_complete", "1", "slides-docx", "d"]), 0)
+        self.assertEqual(output.getvalue(), "detect\n")
+        probe.assert_not_called()
+        detect.assert_not_called()
 
 
 if __name__ == "__main__":

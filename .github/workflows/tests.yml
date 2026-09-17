@@ -18,6 +18,15 @@ jobs:
       - run: python -m pip install .
       - run: python -m unittest tests.test_unit
       - run: slides-docx --help
+      - run: python -m slides_docx --help
+      - run: slides-docx completion bash
+      - run: slides-docx completion zsh
+      - run: slides-docx completion fish
+      - run: slides-docx completion powershell
+      - name: Validate PowerShell completion
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: slides-docx completion powershell | Out-String | Invoke-Expression
 
   integration:
     runs-on: ubuntu-latest

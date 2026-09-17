@@ -13,6 +13,7 @@ flowchart TD
     profile["Shared crop profile<br/>User configuration directory"]
     detect["slides-docx detect<br/>FFmpeg scene detection"]
     times["lecture.slide-times.txt<br/>Reviewable slide boundaries"]
+    contact["lecture.contact-sheet.jpg<br/>Visual transition review"]
     vtt["lecture.vtt<br/>Timestamped transcript"]
     build["slides-docx build<br/>Screenshots + transcript"]
     docx["lecture.docx<br/>Landscape slides + editable text"]
@@ -20,6 +21,7 @@ flowchart TD
     video --> select --> profile
     video --> detect
     profile --> detect --> times
+    detect --> contact
     video --> build
     profile --> build
     times --> build
@@ -100,6 +102,56 @@ ffmpeg -version
 ffprobe -version
 ```
 
+## Shell autocompletion
+
+`slides-docx` can complete commands, options, suitable files, and saved crop profile names. Enable it temporarily in the current terminal with the command for your shell.
+
+For Bash:
+
+```bash
+eval "$(slides-docx completion bash)"
+```
+
+Add the same line to `~/.bashrc` to enable it in future Bash sessions.
+
+For Zsh:
+
+```zsh
+eval "$(slides-docx completion zsh)"
+```
+
+Add the same line to `~/.zshrc` to enable it in future Zsh sessions.
+
+For Fish:
+
+```fish
+slides-docx completion fish | source
+```
+
+Install it persistently with:
+
+```fish
+mkdir -p ~/.config/fish/completions
+slides-docx completion fish > ~/.config/fish/completions/slides-docx.fish
+```
+
+For PowerShell:
+
+```powershell
+slides-docx completion powershell | Out-String | Invoke-Expression
+```
+
+To enable it in future PowerShell sessions, save the generated script and load it from your PowerShell profile:
+
+```powershell
+$completionFile = Join-Path (Split-Path -Parent $PROFILE) "slides-docx-completion.ps1"
+New-Item -ItemType Directory -Force (Split-Path -Parent $completionFile) | Out-Null
+slides-docx completion powershell | Set-Content $completionFile
+Add-Content $PROFILE ". '$completionFile'"
+```
+
+Completion reads files and crop profiles when Tab is pressed, so new profiles appear without reinstalling the application. The command only prints shell code; it never changes shell configuration itself.
+
 To reinstall after updating the repository, or to uninstall:
 
 ```bash
@@ -130,10 +182,13 @@ This creates:
 
 ```text
 lecture.slide-times.txt
+lecture.contact-sheet.jpg
 lecture.docx
 ```
 
 `lecture.slide-times.txt` can be reviewed or edited before building the DOCX. Slide 1 implicitly begins at `0`; each number in the file marks the appearance of a new slide.
+
+The four-column contact sheet provides a quick visual check for false or duplicate transitions before building the document.
 
 ## Selecting and reusing slide areas
 
@@ -178,6 +233,12 @@ Change the interval with `--min-gap`, or use `0` to disable merging:
 ```bash
 slides-docx detect lecture.mp4 --min-gap 1.2
 slides-docx detect lecture.mp4 --min-gap 0
+```
+
+Detection also creates `lecture.contact-sheet.jpg`, containing labeled thumbnails for all detected slides. It uses the video filename as its prefix and applies the same crop as detection. Skip it when it is not needed:
+
+```bash
+slides-docx detect lecture.mp4 --no-contact-sheet
 ```
 
 Choose a non-active profile for one run:
@@ -250,12 +311,11 @@ python3 -m pip install -r requirements.txt
 
 On Windows, activate the environment with `.venv\Scripts\activate`.
 
-The original commands remain available as compatibility wrappers:
+Run the CLI directly from a repository checkout with:
 
 ```bash
-./detect_slides.sh lecture.mp4
-python3 vttslidesdocx.py lecture.vtt slide_times.txt lecture.mp4
-python3 select_slides.py lecture.mp4 --profile university
+python3 -m slides_docx --help
+python3 -m slides_docx detect lecture.mp4
 ```
 
 Run the automated tests with:

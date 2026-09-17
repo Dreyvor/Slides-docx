@@ -64,7 +64,10 @@ def extract_frame(video, timestamp, output, crop=None, image_format="image2"):
     ]
     if crop:
         command += ["-vf", f"crop={crop}"]
-    command += ["-frames:v", "1", "-q:v", "2", "-f", image_format, str(output)]
+    command += ["-frames:v", "1"]
+    if Path(output).suffix.lower() in {".jpg", ".jpeg"}:
+        command += ["-q:v", "2"]
+    command += ["-f", image_format, str(output)]
     try:
         subprocess.run(command, check=True)
     except subprocess.CalledProcessError as exc:
