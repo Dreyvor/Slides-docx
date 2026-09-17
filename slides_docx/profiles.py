@@ -1,8 +1,10 @@
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +14,10 @@ from .errors import SlidesDocxError
 
 
 PROFILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+PROFILE_SETTING_KEYS = {
+    "detect": {"threshold", "min_gap", "contact_sheet"},
+    "build": {"lead"},
+}
 
 
 def validate_profile_name(name):
@@ -74,6 +80,51 @@ def profile_fingerprint(profile):
     return hashlib.sha256(encoded).hexdigest()[:16]
 
 
+def profile_settings(profile, command):
+    """Return a copy of the saved settings for a command."""
+    return dict(profile.get("settings", {}).get(command, {}))
+
+
+def _validate_settings(settings, profile_name, path):
+    if settings is None:
+        return
+    if not isinstance(settings, dict):
+        raise SlidesDocxError(
+            f"Crop profile '{profile_name}' has invalid settings in configuration {path}"
+        )
+    for command, values in settings.items():
+        if command not in PROFILE_SETTING_KEYS or not isinstance(values, dict):
+            raise SlidesDocxError(
+                f"Crop profile '{profile_name}' has invalid settings group "
+                f"'{command}' in configuration {path}"
+            )
+        unknown = set(values) - PROFILE_SETTING_KEYS[command]
+        if unknown:
+            setting = sorted(unknown)[0]
+            raise SlidesDocxError(
+                f"Crop profile '{profile_name}' has unknown setting "
+                f"'{command}.{setting}' in configuration {path}"
+            )
+        for setting, value in values.items():
+            key = f"{command}.{setting}"
+            if setting == "contact_sheet":
+                valid = isinstance(value, bool)
+            else:
+                valid = (
+                    isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and math.isfinite(value)
+                    and value >= 0
+                )
+                if setting == "threshold":
+                    valid = valid and value <= 100
+            if not valid:
+                raise SlidesDocxError(
+                    f"Crop profile '{profile_name}' has invalid setting '{key}' "
+                    f"in configuration {path}"
+                )
+
+
 def scale_profile(profile, video_width, video_height):
     source_width = int(profile["source_width"])
     source_height = int(profile["source_height"])
@@ -126,6 +177,7 @@ class ProfileStore:
                 raise SlidesDocxError(
                     f"Crop profile '{name}' is invalid in configuration {self.path}"
                 )
+            _validate_settings(profile.get("settings"), name, self.path)
         return data
 
     def save(self, data):
@@ -151,8 +203,27 @@ class ProfileStore:
     def set_profile(self, name, profile):
         validate_profile_name(name)
         data = self.load()
+        profile = deepcopy(profile)
+        existing = data["profiles"].get(name)
+        if existing and "settings" in existing and "settings" not in profile:
+            profile["settings"] = deepcopy(existing["settings"])
         data["profiles"][name] = profile
         data["active_profile"] = name
+        self.save(data)
+
+    def update_settings(self, name, command, settings):
+        """Merge reusable command settings into an existing profile."""
+        validate_profile_name(name)
+        if command not in PROFILE_SETTING_KEYS:
+            raise SlidesDocxError(f"Unsupported profile settings group: {command}")
+        _validate_settings({command: settings}, name, self.path)
+        data = self.load()
+        profile = data["profiles"].get(name)
+        if profile is None:
+            raise SlidesDocxError(f"Crop profile does not exist: {name}")
+        saved = profile.setdefault("settings", {}).setdefault(command, {})
+        saved.update(settings)
+        profile["updated_at"] = datetime.now(timezone.utc).isoformat()
         self.save(data)
 
     def get_profile(self, name=None):

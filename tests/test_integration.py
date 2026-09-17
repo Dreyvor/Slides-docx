@@ -68,7 +68,7 @@ class PipelineIntegrationTests(unittest.TestCase):
             contact_sheet.unlink()
             without_contact = subprocess.run(
                 [sys.executable, "-m", "slides_docx", "detect", str(video),
-                 "--threshold", "8", "--no-contact-sheet"],
+                 "--profile", "lecture", "--threshold", "8", "--no-contact-sheet"],
                 cwd=repository, env=env, text=True, capture_output=True,
             )
             self.assertEqual(
@@ -76,6 +76,11 @@ class PipelineIntegrationTests(unittest.TestCase):
                 without_contact.stdout + without_contact.stderr,
             )
             self.assertFalse(contact_sheet.exists())
+            saved_profile = store.load()["profiles"]["lecture"]
+            self.assertEqual(
+                saved_profile["settings"]["detect"],
+                {"threshold": 8.0, "contact_sheet": False},
+            )
 
             build = subprocess.run(
                 [sys.executable, "-m", "slides_docx", "build", str(video), str(vtt)],

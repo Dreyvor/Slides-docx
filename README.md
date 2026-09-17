@@ -214,6 +214,10 @@ slides-docx profiles delete zoom
 
 An active profile cannot be deleted until another profile is activated. A saved crop scales automatically for videos with the same aspect ratio. Videos with a materially different aspect ratio require a new selection.
 
+Profiles can also remember reusable processing settings. When `--profile NAME` is explicitly combined with `--threshold`, `--min-gap`, `--contact-sheet`, `--no-contact-sheet`, or `--lead`, those supplied values are saved after the command succeeds. Selecting the crop again under the same profile name preserves its settings.
+
+For each setting, an option supplied on the command line takes precedence over the saved profile value, which takes precedence over the built-in default. Saved values are used when the profile is selected explicitly, is active, or is referenced by a slide-times file. Options used without an explicit `--profile` affect only that run.
+
 Detection records the profile name and fingerprint in the timestamp file. If that profile is changed before building the DOCX, the build stops rather than silently using different screenshots. Rerun detection or explicitly select the intended crop.
 
 ## Slide detection
@@ -225,6 +229,15 @@ slides-docx detect lecture.mp4 --threshold 14
 ```
 
 Use a lower value such as `8` or `10` when real slide changes are missed.
+
+Save a preferred detection configuration in a profile by naming it explicitly:
+
+```bash
+slides-docx detect lecture.mp4 --profile university \
+  --threshold 14 --min-gap 1.2 --no-contact-sheet
+```
+
+Future detections using the `university` profile reuse these values. Supplying only one of these options updates only that setting; the other saved values remain unchanged.
 
 FFmpeg can report several changes during a single transition or compression artifact. Consecutive detections separated by less than 0.8 seconds are treated as one change, using the first timestamp in that group. Changes exactly 0.8 seconds apart remain separate.
 
@@ -239,6 +252,12 @@ Detection also creates `lecture.contact-sheet.jpg`, containing labeled thumbnail
 
 ```bash
 slides-docx detect lecture.mp4 --no-contact-sheet
+```
+
+If a profile has contact sheets disabled, enable and save them again with:
+
+```bash
+slides-docx detect lecture.mp4 --profile university --contact-sheet
 ```
 
 Choose a non-active profile for one run:
@@ -284,6 +303,12 @@ Screenshots are normally taken five seconds before the following slide appears, 
 
 ```bash
 slides-docx build lecture.mp4 lecture.vtt --lead 2
+```
+
+Combine `--lead` with an explicit profile to save it for later builds:
+
+```bash
+slides-docx build lecture.mp4 lecture.vtt --profile university --lead 2
 ```
 
 Short slides are handled automatically by selecting a frame within the slide interval. The final slide uses the end of the video.

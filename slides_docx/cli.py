@@ -16,6 +16,7 @@ from .profiles import (
     format_crop,
     make_profile,
     profile_fingerprint,
+    profile_settings,
     validate_profile_name,
 )
 from .timestamps import read_timestamp_file, write_timestamp_file
@@ -26,6 +27,12 @@ from .video import (
     probe_video,
     validate_video,
 )
+
+
+DEFAULT_THRESHOLD = 12.0
+DEFAULT_MIN_GAP = MIN_SCENE_CHANGE_GAP
+DEFAULT_CONTACT_SHEET = True
+DEFAULT_LEAD = 5.0
 
 
 def course_date(value):
@@ -107,22 +114,28 @@ def create_parser():
     detect = commands.add_parser("detect", help="Detect slide-change timestamps")
     detect.add_argument("video", type=Path)
     detect.add_argument("--output", type=Path, help="Timestamp output path")
-    detect.add_argument("--threshold", type=threshold_value, default=12.0)
+    detect.add_argument(
+        "--threshold",
+        type=threshold_value,
+        default=None,
+        help="Scene-change threshold (built-in default: 12)",
+    )
     detect.add_argument(
         "--min-gap",
         type=minimum_gap_value,
-        default=MIN_SCENE_CHANGE_GAP,
+        default=None,
         metavar="SECONDS",
         help=(
             "Merge consecutive detections closer than this many seconds; "
-            "use 0 to disable (default: 0.8)"
+            "use 0 to disable (built-in default: 0.8)"
         ),
     )
     detect.add_argument(
-        "--no-contact-sheet",
-        action="store_false",
+        "--contact-sheet",
+        action=argparse.BooleanOptionalAction,
         dest="contact_sheet",
-        help="Do not create the slide contact sheet",
+        default=None,
+        help="Create or skip the slide contact sheet (built-in default: enabled)",
     )
     add_crop_arguments(detect)
     detect.set_defaults(handler=handle_detect)
@@ -132,7 +145,12 @@ def create_parser():
     build.add_argument("vtt", type=Path)
     build.add_argument("--slide-times", type=Path, help="Slide-times input path")
     build.add_argument("--output", type=Path, help="DOCX output path")
-    build.add_argument("--lead", type=lead_value, default=5.0)
+    build.add_argument(
+        "--lead",
+        type=lead_value,
+        default=None,
+        help="Screenshot lead time in seconds (built-in default: 5)",
+    )
     build.add_argument("--date", type=course_date, metavar="DD.MM.YYYY")
     add_crop_arguments(build)
     build.set_defaults(handler=handle_build)
@@ -201,21 +219,38 @@ def handle_select(args):
 def handle_detect(args):
     video = validate_video(args.video)
     info = probe_video(video)
+    store = _store()
     selection = resolve_crop(
-        _store(), info.width, info.height,
+        store, info.width, info.height,
         explicit_crop=args.crop, profile_name=args.profile, no_crop=args.no_crop,
+    )
+    explicit_settings = {
+        "threshold": args.threshold,
+        "min_gap": args.min_gap,
+        "contact_sheet": args.contact_sheet,
+    }
+    settings = _resolve_command_settings(
+        store,
+        selection.profile_name,
+        "detect",
+        explicit_settings,
+        {
+            "threshold": DEFAULT_THRESHOLD,
+            "min_gap": DEFAULT_MIN_GAP,
+            "contact_sheet": DEFAULT_CONTACT_SHEET,
+        },
     )
     output = args.output or video.with_name(f"{video.stem}.slide-times.txt")
     if output.resolve() == video.resolve():
         raise SlidesDocxError("Timestamp output must differ from the video path.")
     _print_crop(selection)
     times = detect_scene_times(
-        video, args.threshold, selection.ffmpeg_value, args.min_gap
+        video, settings["threshold"], selection.ffmpeg_value, settings["min_gap"]
     )
     write_timestamp_file(output, times, selection)
     print(f"Detected {len(times)} slide changes.")
     print(f"Wrote: {output}")
-    if args.contact_sheet:
+    if settings["contact_sheet"]:
         contact_output = video.with_name(f"{video.stem}.contact-sheet.jpg")
         print("Creating contact sheet...")
         create_contact_sheet(
@@ -226,18 +261,28 @@ def handle_detect(args):
             crop=selection.ffmpeg_value,
         )
         print(f"Created: {contact_output}")
+    _persist_explicit_settings(store, args.profile, "detect", explicit_settings)
     return 0
 
 
 def handle_build(args):
     video = validate_video(args.video)
     info = probe_video(video)
+    store = _store()
     slide_file = args.slide_times or video.with_name(f"{video.stem}.slide-times.txt")
     metadata, times = read_timestamp_file(slide_file, info.duration)
     selection = resolve_crop(
-        _store(), info.width, info.height,
+        store, info.width, info.height,
         explicit_crop=args.crop, profile_name=args.profile, no_crop=args.no_crop,
         timestamp_metadata=metadata,
+    )
+    explicit_settings = {"lead": args.lead}
+    settings = _resolve_command_settings(
+        store,
+        selection.profile_name,
+        "build",
+        explicit_settings,
+        {"lead": DEFAULT_LEAD},
     )
     output = args.output or video.with_suffix(".docx")
     if args.date:
@@ -250,10 +295,30 @@ def handle_build(args):
     print(f"Detected {len(times) + 1} slides")
     build_document(
         video, args.vtt, times, info.duration, output,
-        lead=args.lead, crop=selection.ffmpeg_value,
+        lead=settings["lead"], crop=selection.ffmpeg_value,
     )
     print(f"Created: {output}")
+    _persist_explicit_settings(store, args.profile, "build", explicit_settings)
     return 0
+
+
+def _resolve_command_settings(store, profile_name, command, explicit, defaults):
+    saved = {}
+    if profile_name:
+        _resolved_name, profile = store.get_profile(profile_name)
+        saved = profile_settings(profile, command)
+    return {
+        key: value if value is not None else saved.get(key, defaults[key])
+        for key, value in explicit.items()
+    }
+
+
+def _persist_explicit_settings(store, profile_name, command, explicit):
+    if not profile_name:
+        return
+    updates = {key: value for key, value in explicit.items() if value is not None}
+    if updates:
+        store.update_settings(profile_name, command, updates)
 
 
 def _print_crop(selection):
@@ -278,10 +343,11 @@ def handle_profiles(args):
             profile = data["profiles"][name]
             marker = "*" if name == data.get("active_profile") else " "
             crop = (profile["width"], profile["height"], profile["x"], profile["y"])
+            settings = _format_profile_settings(profile)
             print(
                 f"{marker} {name}: {format_crop(crop)} "
                 f"at {profile['source_width']}x{profile['source_height']} "
-                f"[{profile_fingerprint(profile)}]"
+                f"[{profile_fingerprint(profile)}]{settings}"
             )
         print(f"Configuration: {store.path}")
         return 0
@@ -294,6 +360,22 @@ def handle_profiles(args):
         store.activate(args.name)
         print(f"Activated crop profile: {args.name}")
     return 0
+
+
+def _format_profile_settings(profile):
+    detect = profile_settings(profile, "detect")
+    build = profile_settings(profile, "build")
+    values = []
+    if "threshold" in detect:
+        values.append(f"threshold={detect['threshold']:g}")
+    if "min_gap" in detect:
+        values.append(f"min-gap={detect['min_gap']:g}")
+    if "contact_sheet" in detect:
+        enabled = "yes" if detect["contact_sheet"] else "no"
+        values.append(f"contact-sheet={enabled}")
+    if "lead" in build:
+        values.append(f"lead={build['lead']:g}")
+    return f"; settings: {', '.join(values)}" if values else ""
 
 
 def handle_completion(args):
