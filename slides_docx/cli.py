@@ -17,7 +17,13 @@ from .profiles import (
     validate_profile_name,
 )
 from .timestamps import read_timestamp_file, write_timestamp_file
-from .video import detect_scene_times, extract_frame, probe_video, validate_video
+from .video import (
+    MIN_SCENE_CHANGE_GAP,
+    detect_scene_times,
+    extract_frame,
+    probe_video,
+    validate_video,
+)
 
 
 def course_date(value):
@@ -58,6 +64,20 @@ def lead_value(value):
     return lead
 
 
+def minimum_gap_value(value):
+    try:
+        gap = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "Minimum scene-change gap must be a non-negative number"
+        ) from None
+    if not math.isfinite(gap) or gap < 0:
+        raise argparse.ArgumentTypeError(
+            "Minimum scene-change gap must be a non-negative number"
+        )
+    return gap
+
+
 def add_crop_arguments(parser):
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--crop", metavar="W:H:X:Y", help="Use an explicit crop")
@@ -86,6 +106,16 @@ def create_parser():
     detect.add_argument("video", type=Path)
     detect.add_argument("--output", type=Path, help="Timestamp output path")
     detect.add_argument("--threshold", type=threshold_value, default=12.0)
+    detect.add_argument(
+        "--min-gap",
+        type=minimum_gap_value,
+        default=MIN_SCENE_CHANGE_GAP,
+        metavar="SECONDS",
+        help=(
+            "Merge consecutive detections closer than this many seconds; "
+            "use 0 to disable (default: 0.8)"
+        ),
+    )
     add_crop_arguments(detect)
     detect.set_defaults(handler=handle_detect)
 
@@ -165,7 +195,9 @@ def handle_detect(args):
     if output.resolve() == video.resolve():
         raise SlidesDocxError("Timestamp output must differ from the video path.")
     _print_crop(selection)
-    times = detect_scene_times(video, args.threshold, selection.ffmpeg_value)
+    times = detect_scene_times(
+        video, args.threshold, selection.ffmpeg_value, args.min_gap
+    )
     write_timestamp_file(output, times, selection)
     print(f"Detected {len(times)} slide changes.")
     print(f"Wrote: {output}")
@@ -274,11 +306,14 @@ def legacy_detect_main(argv=None):
     parser.add_argument("video", type=Path)
     parser.add_argument("output", nargs="?", type=Path, default=Path("slide_times.txt"))
     parser.add_argument("--threshold", type=threshold_value, default=12.0)
+    parser.add_argument(
+        "--min-gap", type=minimum_gap_value, default=MIN_SCENE_CHANGE_GAP
+    )
     parser.add_argument("--crop")
     args = parser.parse_args(argv)
     forwarded = argparse.Namespace(
         video=args.video, output=args.output, threshold=args.threshold,
-        crop=args.crop, profile=None, no_crop=False,
+        min_gap=args.min_gap, crop=args.crop, profile=None, no_crop=False,
     )
     try:
         return handle_detect(forwarded)

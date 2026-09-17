@@ -74,9 +74,26 @@ def extract_frame(video, timestamp, output, crop=None, image_format="image2"):
 
 
 _SCENE_TIME = re.compile(r"^lavfi\.scd\.time=([0-9]+(?:\.[0-9]+)?)$")
+MIN_SCENE_CHANGE_GAP = 0.8
 
 
-def detect_scene_times(video, threshold, crop=None):
+def merge_rapid_scene_changes(times, minimum_gap=MIN_SCENE_CHANGE_GAP):
+    """Keep the first timestamp from each cluster of rapid detections."""
+    ordered = sorted(set(times))
+    if not ordered:
+        return []
+    merged = [ordered[0]]
+    previous = ordered[0]
+    for timestamp in ordered[1:]:
+        if timestamp - previous >= minimum_gap:
+            merged.append(timestamp)
+        previous = timestamp
+    return merged
+
+
+def detect_scene_times(
+    video, threshold, crop=None, minimum_gap=MIN_SCENE_CHANGE_GAP
+):
     require_tool("ffmpeg")
     filters = []
     if crop:
@@ -100,4 +117,4 @@ def detect_scene_times(video, threshold, crop=None):
         match = _SCENE_TIME.fullmatch(line.strip())
         if match:
             times.append(float(match.group(1)))
-    return sorted(set(times))
+    return merge_rapid_scene_changes(times, minimum_gap)

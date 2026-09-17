@@ -171,6 +171,15 @@ slides-docx detect lecture.mp4 --threshold 14
 
 Use a lower value such as `8` or `10` when real slide changes are missed.
 
+FFmpeg can report several changes during a single transition or compression artifact. Consecutive detections separated by less than 0.8 seconds are treated as one change, using the first timestamp in that group. Changes exactly 0.8 seconds apart remain separate.
+
+Change the interval with `--min-gap`, or use `0` to disable merging:
+
+```bash
+slides-docx detect lecture.mp4 --min-gap 1.2
+slides-docx detect lecture.mp4 --min-gap 0
+```
+
 Choose a non-active profile for one run:
 
 ```bash

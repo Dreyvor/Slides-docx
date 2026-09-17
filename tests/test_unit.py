@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from slides_docx.cli import course_date, handle_select, time_value
+from slides_docx.cli import course_date, handle_select, minimum_gap_value, time_value
 from slides_docx.content import screenshot_time, timestamp_to_seconds, transcript_by_slide
 from slides_docx.crop import resolve_crop
 from slides_docx.errors import SlidesDocxError
@@ -20,6 +20,7 @@ from slides_docx.profiles import (
     scale_profile,
 )
 from slides_docx.timestamps import read_timestamp_file, write_timestamp_file
+from slides_docx.video import merge_rapid_scene_changes
 
 
 class ProfileTests(unittest.TestCase):
@@ -117,6 +118,21 @@ class ContentTests(unittest.TestCase):
         self.assertEqual(course_date("29.02.2024").strftime("%Y_%m_%d"), "2024_02_29")
         with self.assertRaises(argparse.ArgumentTypeError):
             course_date("29.02.2025")
+
+    def test_rapid_scene_changes_are_merged(self):
+        self.assertEqual(
+            merge_rapid_scene_changes([20.0, 10.7, 10.0, 10.2, 20.8]),
+            [10.0, 20.0, 20.8],
+        )
+        self.assertEqual(merge_rapid_scene_changes([]), [])
+        self.assertEqual(
+            merge_rapid_scene_changes([1.0, 1.1, 1.2], minimum_gap=0),
+            [1.0, 1.1, 1.2],
+        )
+        self.assertEqual(minimum_gap_value("1.25"), 1.25)
+        for value in ("-0.1", "nan", "bad"):
+            with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
+                minimum_gap_value(value)
 
 
 class SelectorTests(unittest.TestCase):
