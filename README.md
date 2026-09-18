@@ -1,5 +1,7 @@
 # Slides DOCX
 
+[![tests](https://github.com/Dreyvor/Slides-docx/actions/workflows/tests.yml/badge.svg)](https://github.com/Dreyvor/Slides-docx/actions/workflows/tests.yml)
+
 **Lecture recording + captions → illustrated, editable Word notes.**
 
 `slides-docx` finds slide changes in a recorded presentation, pairs each slide with its timestamped transcript, and creates a Word document you can edit, search, highlight, and print.
