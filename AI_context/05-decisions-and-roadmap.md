@@ -63,8 +63,10 @@ macOS packaging consists of:
 - A macOS-specific `pyside6-deploy` template with Cocoa/Widgets/SVG/image plugin support.
 - `Slides DOCX.app` metadata for bundle ID `io.github.dreyvor.slidesdocx`, Education category, minimum macOS 13, and package-sourced version.
 - FFmpeg and FFprobe under `Contents/Resources/bin`, with notices and inventories under `Contents/Resources/licenses`.
-- Arm64 thinning, nested ad-hoc signing, strict signature verification, and a compressed DMG with an Applications shortcut.
+- Arm64 thinning, nested ad-hoc signing, strict signature verification, and a compressed DMG with an Applications shortcut. Mach-O files and frameworks are signed from the inside out, followed by the outer bundle; `--deep` is used for verification rather than signing.
 - A release smoke test that mounts the DMG, checks `--version`/`--diagnose`, starts Qt offscreen, and verifies there are no external non-system dynamic-library paths.
+
+The macOS deployment excludes the GUI runtime SVG from Nuitka package data. The generated ICNS under `Contents/Resources` is the application icon; leaving the SVG under `Contents/MacOS` makes `codesign` interpret it as an unsigned nested code component.
 
 Deployment specs are rendered with the active Python and checkout paths during each build; no machine-specific Python path is committed. The GUI project manifest explicitly includes `theme.py`.
 

@@ -92,6 +92,11 @@ freeze_application() {
         exit 1
     fi
     cp -a "${frozen_app}" "${app_bundle}"
+
+    # The bundle icon is the ICNS file in Contents/Resources. Package data in
+    # Contents/MacOS is treated as nested code by codesign, so the GUI SVG must
+    # not remain beside the frozen Python modules.
+    rm -f "${app_bundle}/Contents/MacOS/slides_docx/gui/icon.svg"
 }
 
 configure_bundle() {
@@ -164,7 +169,9 @@ sign_bundle() {
     while IFS= read -r framework; do
         codesign "${sign_options[@]}" "${framework}"
     done < <(find "${app_bundle}" -type d -name '*.framework' -print | sort -r)
-    codesign "${sign_options[@]}" --deep "${app_bundle}"
+    # Nested Mach-O files and frameworks were signed above. Sign the outer
+    # bundle last; --deep is intentionally reserved for verification.
+    codesign "${sign_options[@]}" "${app_bundle}"
 }
 
 create_dmg() {

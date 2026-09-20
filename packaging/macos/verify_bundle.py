@@ -34,6 +34,11 @@ def dependencies(binary: Path) -> list[str]:
 
 def verify(app: Path) -> None:
     resources = app / "Contents" / "Resources"
+    misplaced_icon = app / "Contents" / "MacOS" / "slides_docx" / "gui" / "icon.svg"
+    if misplaced_icon.exists():
+        raise RuntimeError(
+            f"GUI icon data must be stored under Contents/Resources: {misplaced_icon}"
+        )
     required = (
         resources / "bin" / "ffmpeg",
         resources / "bin" / "ffprobe",

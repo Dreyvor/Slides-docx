@@ -21,7 +21,9 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential curl ffmpeg libegl1 libgl1 nasm pkg-config xz-utils
+          sudo apt-get install -y \
+            build-essential curl ffmpeg libegl1 libgl1 libxcb-cursor0 \
+            nasm pkg-config xz-utils
           python -m pip install '.[desktop-build]'
       - name: Run tests
         run: |
@@ -62,6 +64,7 @@ jobs:
   smoke:
     needs: build
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-22.04, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
@@ -73,7 +76,7 @@ jobs:
       - name: Install display smoke-test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y weston xvfb
+          sudo apt-get install -y --no-install-recommends weston xvfb
       - name: Extract and diagnose AppImage
         run: |
           appimage="$(find dist -maxdepth 1 -name '*.AppImage' -print -quit)"

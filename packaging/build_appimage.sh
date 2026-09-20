@@ -57,6 +57,12 @@ if [[ -z "${frozen_dir}" ]]; then
     echo "pyside6-deploy did not create a standalone directory" >&2
     exit 1
 fi
+if ! find "${frozen_dir}" -name 'libxcb-cursor.so.0*' -print -quit \
+    | grep -q .; then
+    echo "The standalone bundle is missing libxcb-cursor.so.0." >&2
+    echo "Install libxcb-cursor0 on the build host and rebuild." >&2
+    exit 1
+fi
 frozen_executable="$(find "${frozen_dir}" -maxdepth 1 -type f -perm -u+x -name '*.bin' -print -quit)"
 if [[ -z "${frozen_executable}" ]]; then
     echo "pyside6-deploy did not create an executable" >&2

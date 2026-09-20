@@ -62,7 +62,20 @@ Tests use temporary directories and test-specific `ProfileStore` paths. Do not r
 - GUI tests on Ubuntu with `QT_QPA_PLATFORM=offscreen`; the job installs the
   `libegl1` and `libgl1` runtime libraries required to import PySide6.
 
-`.github/workflows/release-linux.yml` is reusable and manually dispatchable. It builds on Ubuntu 22.04, runs tests, creates the AppImage, then smoke-tests its extracted contents on Ubuntu 22.04 and 24.04 under offscreen Qt, X11, and headless Wayland.
+`.github/workflows/release-linux.yml` is reusable and manually dispatchable. It builds on Ubuntu 22.04, runs tests, creates the AppImage, then smoke-tests its extracted contents on Ubuntu 22.04 and 24.04 under offscreen Qt, X11, and headless Wayland. Matrix fail-fast is disabled so one platform failure does not cancel and hide the result from the other platform. Display packages are installed without recommended extras to keep smoke jobs smaller.
+
+The build runner installs `libxcb-cursor0` so Nuitka can collect
+`libxcb-cursor.so.0`, which Qt 6.5 and newer require for the XCB platform
+plugin. `build_appimage.sh` refuses to package the application if that library
+is absent from the frozen directory. Do not install it only in the smoke jobs,
+because doing so would hide a dependency missing from the AppImage.
+
+The Linux deploy template passes Nuitka's GitHub-workflow option because
+`pyside6-deploy` always supplies a Linux icon argument while its supported
+standalone mode cannot use that argument. The AppImage builder installs the
+project SVG itself. Avoid force-including all of `lxml`: including `docx` lets
+Nuitka follow the required `lxml` imports without pulling in optional doctest
+modules.
 
 `.github/workflows/release-macos.yml` is reusable and manually dispatchable. It runs on the arm64 `macos-14` runner, tests the source, compiles the pinned LGPL FFmpeg, freezes and ad-hoc signs the app, builds the DMG, exercises the bundled tools with the synthetic pipeline, mounts and launches the result, and validates Mach-O architectures, dependency paths, and signatures.
 
