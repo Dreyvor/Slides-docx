@@ -10,6 +10,8 @@
 
 [Watch the 40-second demo](docs/assets/demo.mp4)
 
+[Download a desktop preview](https://github.com/Dreyvor/Slides-docx/releases/latest) for Linux or Apple Silicon macOS — Python and FFmpeg are included.
+
 ## See the result
 
 | Select the slide area once | Get slides with editable transcript text |
@@ -51,8 +53,56 @@ Review the four-column [contact sheet](#slide-detection) before [building the DO
 
 The [slide-times file](#slide-detection), `lecture.slide-times.txt`, remains a simple, editable list of slide boundaries. The [final DOCX](#building-the-docx) alternates between a landscape slide page and a portrait page of normal editable transcript text.
 
+## Desktop app
+
+The guided interface walks through choosing the video and captions, selecting or reusing a slide profile, reviewing the contact sheet, and creating the DOCX. It follows the desktop's light or dark appearance automatically. Advanced detection and screenshot settings remain available in collapsed panels.
+
+### Linux desktop preview
+
+Download `Slides_DOCX-<version>-x86_64.AppImage` from [GitHub Releases](https://github.com/Dreyvor/Slides-docx/releases/latest), make it executable, and open it:
+
+```bash
+chmod +x Slides_DOCX-*-x86_64.AppImage
+./Slides_DOCX-*-x86_64.AppImage
+```
+
+Because the preview is unsigned, some desktop environments may ask you to confirm that the downloaded file is trusted.
+
+### macOS desktop preview
+
+The macOS preview supports **macOS 13 or newer on Apple Silicon (M1 or later)**. Download `Slides_DOCX-<version>-macOS-arm64.dmg` from [GitHub Releases](https://github.com/Dreyvor/Slides-docx/releases/latest), open the disk image, and drag **Slides DOCX** to the **Applications** shortcut.
+
+This preview is ad-hoc signed but has no Apple Developer ID signature or notarization. On the first launch, macOS will show a Gatekeeper warning:
+
+1. Try to open **Slides DOCX** from Applications, then close the warning.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll to the security message for Slides DOCX and choose **Open Anyway**.
+4. Confirm **Open** when macOS asks again.
+
+This is Apple's application-specific [documented override flow](https://support.apple.com/en-gb/102445); you do not need to disable Gatekeeper or remove quarantine protection. A managed Mac may prevent this override according to its administrator's policy.
+
+Each release also provides `SHA256SUMS-macOS-arm64`. Verify the downloaded disk image from its folder with:
+
+```bash
+shasum -a 256 -c SHA256SUMS-macOS-arm64
+```
+
+Both desktop downloads contain Python, Qt, FFmpeg, FFprobe, and their runtime dependencies. They do not require Homebrew, pipx, or a system FFmpeg installation.
+
+To run the GUI from a source checkout instead:
+
+```bash
+pipx install '.[gui]'
+slides-docx-gui
+```
+
+The command-line interface remains available for automation and terminal workflows.
+
 ## Table of contents
 
+- [Desktop app](#desktop-app)
+  - [Linux desktop preview](#linux-desktop-preview)
+  - [macOS desktop preview](#macos-desktop-preview)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -94,6 +144,8 @@ flowchart TD
 
 ## Requirements
 
+The desktop downloads include their runtime requirements. Command-line installations require:
+
 - [Python 3.10 or newer](https://www.python.org/downloads/)
 - [FFmpeg and FFprobe](https://ffmpeg.org/download.html), available on `PATH`
 - A desktop session for [visual crop selection](#selecting-and-reusing-slide-areas)
@@ -101,6 +153,8 @@ flowchart TD
 The Python dependencies (`python-docx`, `opencv-python`, and `platformdirs`) are installed automatically during [installation](#installation).
 
 ## Installation
+
+This section installs the command-line application. Desktop users can instead use the self-contained [Linux AppImage](#linux-desktop-preview) or [Apple Silicon macOS application](#macos-desktop-preview).
 
 [`pipx`](https://pipx.pypa.io/latest/how-to/install-pipx.html) installs the application in an isolated environment and makes `slides-docx` available in every terminal.
 
@@ -203,7 +257,7 @@ slides-docx profiles delete zoom
 
 An active profile cannot be deleted until another profile is activated. A saved crop scales automatically for videos with the same aspect ratio. Videos with a materially different aspect ratio require a new selection.
 
-Profiles can also remember reusable processing settings. When `--profile NAME` is explicitly combined with `--threshold`, `--min-gap`, `--contact-sheet`, `--no-contact-sheet`, or `--lead`, those supplied values are saved after the command succeeds. Selecting the crop again under the same profile name preserves its settings.
+Profiles can also remember reusable processing settings. When `--profile NAME` is explicitly combined with `--threshold`, `--min-gap`, `--contact-sheet`, `--no-contact-sheet`, `--lead`, `--slide-images`, or `--no-slide-images`, those supplied values are saved after the command succeeds. Selecting the crop again under the same profile name preserves its settings.
 
 For each setting, an option supplied on the command line takes precedence over the saved profile value, which takes precedence over the built-in default. Saved values are used when the profile is selected explicitly, is active, or is referenced by a slide-times file. Options used without an explicit `--profile` affect only that run.
 
@@ -211,19 +265,19 @@ For each setting, an option supplied on the command line takes precedence over t
 
 ## Slide detection
 
-The default scene-change threshold is `12`. Use a higher value for fewer detections when animations or bullet reveals cause false changes:
+The default scene-change threshold is `3`. Use a higher value for fewer detections when animations or bullet reveals cause false changes:
 
 ```bash
-slides-docx detect lecture.mp4 --threshold 14
+slides-docx detect lecture.mp4 --threshold 6
 ```
 
-Use a lower value such as `8` or `10` when real slide changes are missed.
+Use a lower value such as `1` or `2` when real slide changes are missed.
 
 Save a preferred detection configuration in a [profile](#selecting-and-reusing-slide-areas) by naming it explicitly:
 
 ```bash
 slides-docx detect lecture.mp4 --profile university \
-  --threshold 14 --min-gap 1.2 --no-contact-sheet
+  --threshold 6 --min-gap 1.2 --no-contact-sheet
 ```
 
 Future detections using the `university` profile reuse these values. Supplying only one of these options updates only that setting; the other saved values remain unchanged.
@@ -242,6 +296,16 @@ Detection also creates `lecture.contact-sheet.jpg`, containing labeled thumbnail
 ```bash
 slides-docx detect lecture.mp4 --no-contact-sheet
 ```
+
+Choose custom artifact names with `--output` and `--contact-output`. Missing format extensions are added automatically:
+
+```bash
+slides-docx detect lecture.mp4 \
+  --output reviewed-transitions \
+  --contact-output slide-overview
+```
+
+This creates `reviewed-transitions.txt` and `slide-overview.jpg`. Existing `.jpg` and `.jpeg` contact-sheet extensions are both accepted.
 
 If a profile has contact sheets disabled, enable and save them again with:
 
@@ -280,6 +344,8 @@ slides-docx build lecture.mp4 lecture.vtt \
   --output notes.docx
 ```
 
+The `.docx` extension is added automatically when it is missing from `--output`.
+
 Add the course date with `DD.MM.YYYY`:
 
 ```bash
@@ -288,7 +354,7 @@ slides-docx build lecture.mp4 lecture.vtt --date 17.09.2026
 
 This creates `2026_09_17-lecture.docx`.
 
-Screenshots are normally taken five seconds before the following slide appears, which tends to capture completed bullet lists and diagrams. Change that offset with:
+Screenshots are normally taken one second before the following slide appears, which tends to capture completed bullet lists and diagrams. Change that offset with:
 
 ```bash
 slides-docx build lecture.mp4 lecture.vtt --lead 2
@@ -298,6 +364,19 @@ Combine `--lead` with an [explicit profile](#selecting-and-reusing-slide-areas) 
 
 ```bash
 slides-docx build lecture.mp4 lecture.vtt --profile university --lead 2
+```
+
+When official lecture slides are available separately, create a smaller transcript-only document and use the contact sheet for rapid visual reference:
+
+```bash
+slides-docx build lecture.mp4 lecture.vtt --no-slide-images
+```
+
+The resulting DOCX keeps one portrait transcript section per detected slide and skips screenshot extraction. Save this preference in a profile, or explicitly enable screenshots again, with:
+
+```bash
+slides-docx build lecture.mp4 lecture.vtt --profile university --no-slide-images
+slides-docx build lecture.mp4 lecture.vtt --profile university --slide-images
 ```
 
 Short slides are handled automatically by selecting a frame within the slide interval. The final slide uses the end of the video.
@@ -373,6 +452,13 @@ source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 ```
 
+Install the optional desktop interface when working on the GUI:
+
+```bash
+python3 -m pip install -e '.[gui]'
+python3 -m slides_docx.gui
+```
+
 On Windows, activate the environment with `.venv\Scripts\activate`.
 
 Run the CLI directly from a repository checkout with:
@@ -387,6 +473,8 @@ Run the automated tests with:
 ```bash
 python3 -m unittest
 ```
+
+Desktop build scripts and bundled dependency notices live under `packaging/`. All workflows can be started manually from the GitHub Actions page. Linux and macOS preview workflows build and smoke-test their native artifacts independently. A tag matching `v*` publishes both platforms to one GitHub Release only after both workflows pass; manual desktop runs upload preview artifacts without publishing a release.
 
 ## License
 

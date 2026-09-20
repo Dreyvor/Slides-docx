@@ -23,6 +23,8 @@ def create_contact_sheet(
     output,
     crop=None,
     lead=5.0,
+    progress=None,
+    cancel=None,
 ):
     """Create a labeled four-column JPEG preview of all detected slides."""
     try:
@@ -49,10 +51,12 @@ def create_contact_sheet(
     with tempfile.TemporaryDirectory(prefix="slides_docx_contact_") as directory:
         directory = Path(directory)
         for index, start in enumerate(starts):
+            if cancel is not None:
+                cancel.raise_if_cancelled()
             end = starts[index + 1] if index + 1 < len(starts) else duration
             capture = screenshot_time(start, end, lead)
             frame_path = directory / f"slide_{index + 1:03d}.jpg"
-            extract_frame(video, capture, frame_path, crop=crop)
+            extract_frame(video, capture, frame_path, crop=crop, cancel=cancel)
             encoded = numpy.frombuffer(frame_path.read_bytes(), dtype=numpy.uint8)
             frame = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
             if frame is None:
@@ -91,6 +95,8 @@ def create_contact_sheet(
                 (100, 100, 100),
                 1,
             )
+            if progress:
+                progress(index + 1, len(starts))
 
     success, encoded_sheet = cv2.imencode(
         ".jpg", sheet, [cv2.IMWRITE_JPEG_QUALITY, 88]

@@ -1,0 +1,40 @@
+name: Desktop release
+
+on:
+  # push:
+  #   tags:
+  #     - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    uses: ./.github/workflows/release-linux.yml
+
+  macos:
+    uses: ./.github/workflows/release-macos.yml
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [linux, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Slides-DOCX-Linux-x86_64
+          path: dist/linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: Slides-DOCX-macOS-arm64
+          path: dist/macos
+      - name: Publish one cross-platform GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/linux/* dist/macos/* \
+            --generate-notes \
+            --title "Slides DOCX ${GITHUB_REF_NAME}"

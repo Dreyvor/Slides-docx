@@ -4,26 +4,15 @@ import io
 import json
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from slides_docx.cli import (
-    DEFAULT_CONTACT_SHEET,
-    DEFAULT_LEAD,
-    DEFAULT_MIN_GAP,
-    DEFAULT_THRESHOLD,
-    _format_profile_settings,
-    _persist_explicit_settings,
-    _resolve_command_settings,
     course_date,
     create_parser,
-    handle_build,
-    handle_detect,
-    handle_select,
     main,
     minimum_gap_value,
     time_value,
@@ -31,7 +20,7 @@ from slides_docx.cli import (
 from slides_docx.completion import complete, render_completion
 from slides_docx.content import screenshot_time, timestamp_to_seconds, transcript_by_slide
 from slides_docx.crop import resolve_crop
-from slides_docx.errors import SlidesDocxError
+from slides_docx.errors import JobCancelledError, SlidesDocxError
 from slides_docx.profiles import (
     ProfileStore,
     format_crop,
@@ -42,7 +31,18 @@ from slides_docx.profiles import (
     scale_profile,
 )
 from slides_docx.timestamps import read_timestamp_file, write_timestamp_file
-from slides_docx.video import merge_rapid_scene_changes
+from slides_docx.crop import CropSelection
+from slides_docx.services import (
+    BuildRequest,
+    CancellationToken,
+    DetectRequest,
+    PreviewRequest,
+    build_docx,
+    detect_slides,
+    ensure_output_suffix,
+    extract_preview,
+)
+from slides_docx.video import VideoInfo, merge_rapid_scene_changes, resolve_tool
 
 
 class ProfileTests(unittest.TestCase):
@@ -71,21 +71,29 @@ class ProfileTests(unittest.TestCase):
             "lecture", "detect", {"threshold": 14.0, "contact_sheet": False}
         )
         self.store.update_settings("lecture", "detect", {"min_gap": 1.2})
-        self.store.update_settings("lecture", "build", {"lead": 2.0})
+        self.store.update_settings(
+            "lecture", "build", {"lead": 2.0, "slide_images": False}
+        )
 
         _name, saved = self.store.get_profile("lecture")
         self.assertEqual(
             profile_settings(saved, "detect"),
             {"threshold": 14.0, "contact_sheet": False, "min_gap": 1.2},
         )
-        self.assertEqual(profile_settings(saved, "build"), {"lead": 2.0})
+        self.assertEqual(
+            profile_settings(saved, "build"),
+            {"lead": 2.0, "slide_images": False},
+        )
         self.assertEqual(profile_fingerprint(saved), crop_fingerprint)
 
         replacement = make_profile((1500, 850, 120, 70), 1920, 1080)
         self.store.set_profile("lecture", replacement)
         _name, replaced = self.store.get_profile("lecture")
         self.assertEqual(profile_settings(replaced, "detect"), profile_settings(saved, "detect"))
-        self.assertEqual(profile_settings(replaced, "build"), {"lead": 2.0})
+        self.assertEqual(
+            profile_settings(replaced, "build"),
+            {"lead": 2.0, "slide_images": False},
+        )
         self.assertNotEqual(profile_fingerprint(replaced), crop_fingerprint)
 
     def test_invalid_saved_setting_is_rejected(self):
@@ -96,6 +104,16 @@ class ProfileTests(unittest.TestCase):
             encoding="utf-8",
         )
         with self.assertRaisesRegex(SlidesDocxError, "detect.threshold"):
+            self.store.load()
+
+    def test_slide_image_setting_requires_a_boolean(self):
+        profile = dict(self.profile)
+        profile["settings"] = {"build": {"slide_images": 0}}
+        self.store.path.write_text(
+            json.dumps({"version": 1, "active_profile": "bad", "profiles": {"bad": profile}}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(SlidesDocxError, "build.slide_images"):
             self.store.load()
 
     def test_existing_profile_without_settings_remains_valid(self):
@@ -197,218 +215,149 @@ class ContentTests(unittest.TestCase):
                 minimum_gap_value(value)
 
 
-class SelectorTests(unittest.TestCase):
-    def test_selector_saves_profile_and_clamps_preview_time(self):
-        fake_cv2 = SimpleNamespace(
-            imread=Mock(return_value=object()),
-            selectROI=Mock(return_value=(10, 20, 300, 200)),
-            destroyAllWindows=Mock(),
-        )
-        store = Mock()
-        arguments = SimpleNamespace(video=Path("lecture.mp4"), profile="room", at=30.0)
-        with patch.dict(sys.modules, {"cv2": fake_cv2}), \
-             patch("slides_docx.cli.validate_video", return_value=arguments.video), \
-             patch("slides_docx.cli.probe_video", return_value=SimpleNamespace(duration=10, width=640, height=360)), \
-             patch("slides_docx.cli.extract_frame") as extract, \
-             patch("slides_docx.cli._store", return_value=store):
-            self.assertEqual(handle_select(arguments), 0)
-        self.assertAlmostEqual(extract.call_args.args[1], 9.85)
-        saved = store.set_profile.call_args.args[1]
-        self.assertEqual((saved["width"], saved["height"], saved["x"], saved["y"]), (300, 200, 10, 20))
-
-    def test_cancel_does_not_change_profile(self):
-        fake_cv2 = SimpleNamespace(
-            imread=Mock(return_value=object()),
-            selectROI=Mock(return_value=(0, 0, 0, 0)),
-            destroyAllWindows=Mock(),
-        )
-        store = Mock()
-        arguments = SimpleNamespace(video=Path("lecture.mp4"), profile="default", at=1.0)
-        with patch.dict(sys.modules, {"cv2": fake_cv2}), \
-             patch("slides_docx.cli.validate_video", return_value=arguments.video), \
-             patch("slides_docx.cli.probe_video", return_value=SimpleNamespace(duration=10, width=640, height=360)), \
-             patch("slides_docx.cli.extract_frame"), \
-             patch("slides_docx.cli._store", return_value=store):
-            self.assertEqual(handle_select(arguments), 0)
-        store.set_profile.assert_not_called()
-
-
-class ProfileSettingCommandTests(unittest.TestCase):
+class ServiceJobTests(unittest.TestCase):
     def setUp(self):
-        self.profile = make_profile((600, 300, 20, 10), 640, 360)
-        self.profile["settings"] = {
-            "detect": {"threshold": 14.0, "min_gap": 1.25, "contact_sheet": False},
-            "build": {"lead": 2.0},
-        }
-        self.store = Mock()
-        self.store.get_profile.return_value = ("room", self.profile)
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.store = ProfileStore(self.root / "config.json")
+        self.store.set_profile("room", make_profile((600, 300, 20, 10), 640, 360))
 
-    def test_explicit_saved_and_builtin_precedence(self):
-        resolved = _resolve_command_settings(
-            self.store,
-            "room",
-            "detect",
-            {"threshold": 9.0, "min_gap": None, "contact_sheet": None},
-            {
-                "threshold": DEFAULT_THRESHOLD,
-                "min_gap": DEFAULT_MIN_GAP,
-                "contact_sheet": DEFAULT_CONTACT_SHEET,
-            },
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_cancellation_token(self):
+        token = CancellationToken()
+        self.assertFalse(token.cancelled)
+        token.cancel()
+        with self.assertRaises(JobCancelledError):
+            token.raise_if_cancelled()
+
+    def test_generated_output_suffixes_are_case_insensitive(self):
+        self.assertEqual(
+            ensure_output_suffix(self.root / "lecture notes", ".docx"),
+            self.root / "lecture notes.docx",
         )
         self.assertEqual(
-            resolved,
-            {"threshold": 9.0, "min_gap": 1.25, "contact_sheet": False},
+            ensure_output_suffix(self.root / "lecture.DOCX", ".docx"),
+            self.root / "lecture.DOCX",
         )
-        without_profile = _resolve_command_settings(
-            self.store,
-            None,
-            "build",
-            {"lead": None},
-            {"lead": DEFAULT_LEAD},
+        self.assertEqual(
+            ensure_output_suffix(self.root / "contact.JPEG", ".jpg", (".jpeg",)),
+            self.root / "contact.JPEG",
         )
-        self.assertEqual(without_profile, {"lead": 5.0})
 
-    def test_only_explicit_settings_with_explicit_profile_are_persisted(self):
-        _persist_explicit_settings(
-            self.store,
-            "room",
-            "detect",
-            {"threshold": 14.0, "min_gap": None, "contact_sheet": False},
-        )
-        self.store.update_settings.assert_called_once_with(
-            "room", "detect", {"threshold": 14.0, "contact_sheet": False}
-        )
-        self.store.reset_mock()
-        _persist_explicit_settings(
-            self.store,
-            None,
-            "detect",
-            {"threshold": 9.0, "min_gap": None, "contact_sheet": None},
-        )
-        self.store.update_settings.assert_not_called()
+    def test_bundled_tool_directory_precedes_path(self):
+        tool = self.root / "tools" / "ffmpeg"
+        tool.parent.mkdir()
+        tool.write_text("#!/bin/sh\n")
+        tool.chmod(0o755)
+        with patch.dict("os.environ", {"SLIDES_DOCX_TOOL_DIR": str(tool.parent)}):
+            self.assertEqual(resolve_tool("ffmpeg"), str(tool))
 
-    def test_parser_uses_tristate_profile_settings(self):
-        parser = create_parser()
-        omitted = parser.parse_args(["detect", "lecture.mp4"])
-        self.assertIsNone(omitted.threshold)
-        self.assertIsNone(omitted.min_gap)
-        self.assertIsNone(omitted.contact_sheet)
-        self.assertTrue(
-            parser.parse_args(["detect", "lecture.mp4", "--contact-sheet"]).contact_sheet
+    def test_macos_app_resource_tool_precedes_path(self):
+        executable = (
+            self.root / "Slides DOCX.app" / "Contents" / "MacOS" / "slides-docx-gui"
         )
-        self.assertFalse(
-            parser.parse_args(["detect", "lecture.mp4", "--no-contact-sheet"]).contact_sheet
-        )
-        self.assertIsNone(parser.parse_args(["build", "lecture.mp4", "lecture.vtt"]).lead)
+        tool = executable.parent.parent / "Resources" / "bin" / "ffmpeg"
+        tool.parent.mkdir(parents=True)
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.touch()
+        tool.write_text("#!/bin/sh\n")
+        tool.chmod(0o755)
+        with patch("slides_docx.video.sys.executable", str(executable)), \
+             patch("slides_docx.video.shutil.which", return_value=None):
+            self.assertEqual(resolve_tool("ffmpeg"), str(tool))
 
-    def test_detect_applies_saved_values_without_persisting_for_active_profile(self):
-        args = SimpleNamespace(
-            video=Path("lecture.mp4"), output=Path("times.txt"),
-            threshold=None, min_gap=None, contact_sheet=None,
-            crop=None, profile=None, no_crop=False,
-        )
-        selection = SimpleNamespace(
-            profile_name="room", ffmpeg_value="600:300:20:10", crop=(600, 300, 20, 10)
-        )
-        with patch("slides_docx.cli.validate_video", return_value=args.video), \
-             patch("slides_docx.cli.probe_video", return_value=SimpleNamespace(duration=30, width=640, height=360)), \
-             patch("slides_docx.cli._store", return_value=self.store), \
-             patch("slides_docx.cli.resolve_crop", return_value=selection), \
-             patch("slides_docx.cli.detect_scene_times", return_value=[10.0]) as detect, \
-             patch("slides_docx.cli.write_timestamp_file"), \
-             patch("slides_docx.cli.create_contact_sheet") as contact:
-            self.assertEqual(handle_detect(args), 0)
-        detect.assert_called_once_with(args.video, 14.0, "600:300:20:10", 1.25)
-        contact.assert_not_called()
-        self.store.update_settings.assert_not_called()
+    def test_preview_clamps_time_and_reports_progress(self):
+        output = self.root / "preview.png"
+        events = []
+        with patch("slides_docx.services.validate_video", return_value=self.root / "video.mp4"), \
+             patch("slides_docx.services.probe_video", return_value=VideoInfo(10, 640, 360)), \
+             patch("slides_docx.services.extract_frame") as extract:
+            result = extract_preview(
+                PreviewRequest(self.root / "video.mp4", output, 30), events.append
+            )
+        self.assertAlmostEqual(result.timestamp, 9.85)
+        self.assertEqual(events[-1].fraction, 1)
+        self.assertEqual(extract.call_args.args[1], result.timestamp)
 
-    def test_detect_persists_only_after_success(self):
-        args = SimpleNamespace(
-            video=Path("lecture.mp4"), output=Path("times.txt"),
-            threshold=9.0, min_gap=None, contact_sheet=None,
-            crop=None, profile="room", no_crop=False,
+    def test_detect_uses_services_and_persists_only_requested_settings(self):
+        video = self.root / "lecture.mp4"
+        output = self.root / "lecture.slide-times"
+        contact = self.root / "lecture.contact-sheet"
+        events = []
+        selection = CropSelection((600, 300, 20, 10), "profile", "room", "fingerprint")
+        request = DetectRequest(
+            video,
+            output=output,
+            contact_output=contact,
+            threshold=14,
+            min_gap=None,
+            contact_sheet=True,
+            profile="room",
+            persist_profile_settings=True,
         )
-        selection = SimpleNamespace(
-            profile_name="room", ffmpeg_value="600:300:20:10", crop=(600, 300, 20, 10)
+        with patch("slides_docx.services.validate_video", return_value=video), \
+             patch("slides_docx.services.probe_video", return_value=VideoInfo(30, 640, 360)), \
+             patch("slides_docx.services.resolve_crop", return_value=selection), \
+             patch("slides_docx.services.detect_scene_times", return_value=[10.0]), \
+             patch("slides_docx.services.write_timestamp_file"), \
+             patch("slides_docx.services.create_contact_sheet"):
+            result = detect_slides(request, self.store, events.append)
+        self.assertEqual(result.slide_count, 2)
+        self.assertEqual(result.slide_times, self.root / "lecture.slide-times.txt")
+        self.assertEqual(result.contact_sheet, self.root / "lecture.contact-sheet.jpg")
+        saved = profile_settings(self.store.get_profile("room")[1], "detect")
+        self.assertEqual(saved, {"threshold": 14, "contact_sheet": True})
+        self.assertEqual(events[-1].stage, "done")
+
+    def test_failed_detect_does_not_persist_settings(self):
+        request = DetectRequest(
+            self.root / "lecture.mp4",
+            threshold=14,
+            profile="room",
+            persist_profile_settings=True,
         )
-        common = (
-            patch("slides_docx.cli.validate_video", return_value=args.video),
-            patch("slides_docx.cli.probe_video", return_value=SimpleNamespace(duration=30, width=640, height=360)),
-            patch("slides_docx.cli._store", return_value=self.store),
-            patch("slides_docx.cli.resolve_crop", return_value=selection),
-        )
-        with common[0], common[1], common[2], common[3], \
-             patch("slides_docx.cli.detect_scene_times", side_effect=SlidesDocxError("failed")):
+        selection = CropSelection((600, 300, 20, 10), "profile", "room", "fingerprint")
+        with patch("slides_docx.services.validate_video", return_value=request.video), \
+             patch("slides_docx.services.probe_video", return_value=VideoInfo(30, 640, 360)), \
+             patch("slides_docx.services.resolve_crop", return_value=selection), \
+             patch("slides_docx.services.detect_scene_times", side_effect=SlidesDocxError("failed")):
             with self.assertRaisesRegex(SlidesDocxError, "failed"):
-                handle_detect(args)
-        self.store.update_settings.assert_not_called()
+                detect_slides(request, self.store)
+        self.assertEqual(profile_settings(self.store.get_profile("room")[1], "detect"), {})
 
-        self.store.reset_mock()
-        self.store.get_profile.return_value = ("room", self.profile)
-        with patch("slides_docx.cli.validate_video", return_value=args.video), \
-             patch("slides_docx.cli.probe_video", return_value=SimpleNamespace(duration=30, width=640, height=360)), \
-             patch("slides_docx.cli._store", return_value=self.store), \
-             patch("slides_docx.cli.resolve_crop", return_value=selection), \
-             patch("slides_docx.cli.detect_scene_times", return_value=[10.0]), \
-             patch("slides_docx.cli.write_timestamp_file"):
-            self.assertEqual(handle_detect(args), 0)
-        self.store.update_settings.assert_called_once_with(
-            "room", "detect", {"threshold": 9.0}
+    def test_build_reports_result_and_can_persist_to_metadata_profile(self):
+        video = self.root / "lecture.mp4"
+        vtt = self.root / "lecture.vtt"
+        times = self.root / "lecture.slide-times.txt"
+        output = self.root / "lecture notes"
+        selection = CropSelection((600, 300, 20, 10), "profile", "room", "fingerprint")
+        request = BuildRequest(
+            video,
+            vtt,
+            slide_times=times,
+            output=output,
+            lead=2,
+            slide_images=False,
+            course_date=date(2026, 9, 17),
+            persist_profile_settings=True,
+            settings_profile="room",
         )
-
-    def test_build_uses_timestamp_profile_lead_without_persisting(self):
-        args = SimpleNamespace(
-            video=Path("lecture.mp4"), vtt=Path("lecture.vtt"),
-            slide_times=Path("times.txt"), output=Path("lecture.docx"),
-            lead=None, date=None, crop=None, profile=None, no_crop=False,
+        with patch("slides_docx.services.validate_video", return_value=video), \
+             patch("slides_docx.services.probe_video", return_value=VideoInfo(30, 640, 360)), \
+             patch("slides_docx.services.read_timestamp_file", return_value=({}, [10.0])), \
+             patch("slides_docx.services.resolve_crop", return_value=selection), \
+             patch("slides_docx.services.build_document", return_value=2):
+            result = build_docx(request, self.store)
+        self.assertEqual(result.slide_count, 2)
+        self.assertEqual(result.output, self.root / "2026_09_17-lecture notes.docx")
+        self.assertFalse(
+            result.settings["slide_images"]
         )
-        selection = SimpleNamespace(
-            profile_name="room", ffmpeg_value="600:300:20:10", crop=(600, 300, 20, 10)
-        )
-        with patch("slides_docx.cli.validate_video", return_value=args.video), \
-             patch("slides_docx.cli.probe_video", return_value=SimpleNamespace(duration=30, width=640, height=360)), \
-             patch("slides_docx.cli.read_timestamp_file", return_value=({}, [10.0])), \
-             patch("slides_docx.cli._store", return_value=self.store), \
-             patch("slides_docx.cli.resolve_crop", return_value=selection), \
-             patch("slides_docx.cli.build_document") as build:
-            self.assertEqual(handle_build(args), 0)
-        self.assertEqual(build.call_args.kwargs["lead"], 2.0)
-        self.store.update_settings.assert_not_called()
-
-    def test_build_persists_explicit_lead_only_after_success(self):
-        args = SimpleNamespace(
-            video=Path("lecture.mp4"), vtt=Path("lecture.vtt"),
-            slide_times=Path("times.txt"), output=Path("lecture.docx"),
-            lead=3.0, date=None, crop=None, profile="room", no_crop=False,
-        )
-        selection = SimpleNamespace(
-            profile_name="room", ffmpeg_value="600:300:20:10", crop=(600, 300, 20, 10)
-        )
-
-        def run_with_build(build):
-            with patch("slides_docx.cli.validate_video", return_value=args.video), \
-                 patch("slides_docx.cli.probe_video", return_value=SimpleNamespace(duration=30, width=640, height=360)), \
-                 patch("slides_docx.cli.read_timestamp_file", return_value=({}, [10.0])), \
-                 patch("slides_docx.cli._store", return_value=self.store), \
-                 patch("slides_docx.cli.resolve_crop", return_value=selection), \
-                 patch("slides_docx.cli.build_document", build):
-                return handle_build(args)
-
-        with self.assertRaisesRegex(SlidesDocxError, "failed"):
-            run_with_build(Mock(side_effect=SlidesDocxError("failed")))
-        self.store.update_settings.assert_not_called()
-
-        self.store.reset_mock()
-        self.store.get_profile.return_value = ("room", self.profile)
-        self.assertEqual(run_with_build(Mock()), 0)
-        self.store.update_settings.assert_called_once_with(
-            "room", "build", {"lead": 3.0}
-        )
-
-    def test_profile_listing_formats_saved_settings(self):
         self.assertEqual(
-            _format_profile_settings(self.profile),
-            "; settings: threshold=14, min-gap=1.25, contact-sheet=no, lead=2",
+            profile_settings(self.store.get_profile("room")[1], "build"),
+            {"lead": 2, "slide_images": False},
         )
 
 
@@ -428,6 +377,14 @@ class CompletionTests(unittest.TestCase):
         )
         self.assertIn("--threshold", options)
         self.assertIn("--profile", options)
+        self.assertIn("--contact-output", options)
+        build_options = complete(
+            self.parser,
+            ["slides-docx", "build", "lecture.mp4", "lecture.vtt", "--"],
+            4,
+        )
+        self.assertIn("--slide-images", build_options)
+        self.assertIn("--no-slide-images", build_options)
         self.assertEqual(
             complete(self.parser, ["slides-docx", "completion", "po"], 2),
             ["powershell"],

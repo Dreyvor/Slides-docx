@@ -1,5 +1,4 @@
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,9 +12,10 @@ from docx import Document
 from docx.enum.section import WD_ORIENT
 
 from slides_docx.profiles import ProfileStore, make_profile
+from slides_docx.video import resolve_tool
 
 
-@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg is required")
+@unittest.skipUnless(resolve_tool("ffmpeg") and resolve_tool("ffprobe"), "FFmpeg is required")
 class PipelineIntegrationTests(unittest.TestCase):
     def test_detect_and_build_use_same_crop(self):
         repository = Path(__file__).resolve().parents[1]
@@ -32,7 +32,7 @@ class PipelineIntegrationTests(unittest.TestCase):
                 "[a][b][c][d]concat=n=4:v=1:a=0"
             )
             subprocess.run(
-                ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", filter_graph,
+                [resolve_tool("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", filter_graph,
                  "-c:v", "ffv1", str(video)],
                 check=True,
             )
@@ -107,6 +107,45 @@ class PipelineIntegrationTests(unittest.TestCase):
                         cv2.IMREAD_COLOR,
                     )
                     self.assertEqual(image.shape[:2], (360, 480))
+
+            transcript_only = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "slides_docx",
+                    "build",
+                    str(video),
+                    str(vtt),
+                    "--no-slide-images",
+                    "--output",
+                    str(root / "official slides notes"),
+                ],
+                cwd=repository,
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(
+                transcript_only.returncode,
+                0,
+                transcript_only.stdout + transcript_only.stderr,
+            )
+            transcript_output = root / "official slides notes.docx"
+            transcript_document = Document(transcript_output)
+            self.assertEqual(len(transcript_document.inline_shapes), 0)
+            self.assertEqual(
+                [section.orientation for section in transcript_document.sections],
+                [WD_ORIENT.PORTRAIT] * 2,
+            )
+            transcript_text = "\n".join(
+                paragraph.text for paragraph in transcript_document.paragraphs
+            )
+            self.assertIn("First slide.", transcript_text)
+            self.assertIn("Second slide.", transcript_text)
+            with zipfile.ZipFile(transcript_output) as archive:
+                self.assertFalse(
+                    any(name.startswith("word/media/") for name in archive.namelist())
+                )
 
             store.set_profile("lecture", make_profile((400, 360, 0, 0), 640, 360))
             changed = subprocess.run(

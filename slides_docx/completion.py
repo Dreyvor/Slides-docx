@@ -182,6 +182,8 @@ def _preferred_suffixes(parser, action):
         return {".vtt"}
     if action.dest == "slide_times":
         return {".txt"}
+    if action.dest == "contact_output":
+        return {".jpg", ".jpeg"}
     if action.dest == "output":
         return {".docx"} if parser.prog.endswith(" build") else {".txt"}
     return None

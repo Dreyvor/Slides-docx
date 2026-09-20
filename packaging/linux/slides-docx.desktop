@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Slides DOCX
+Comment=Create illustrated Word notes from lecture recordings and captions
+Exec=slides-docx-gui
+Icon=slides-docx
+Categories=Office;Education;
+Terminal=false
