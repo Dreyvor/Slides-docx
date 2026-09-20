@@ -10,6 +10,8 @@
 
 [Watch the 40-second demo](docs/assets/demo.mp4)
 
+[Download the Linux desktop preview](https://github.com/Dreyvor/Slides-docx/releases/latest) — Python and FFmpeg are included.
+
 ## See the result
 
 | Select the slide area once | Get slides with editable transcript text |
@@ -51,8 +53,29 @@ Review the four-column [contact sheet](#slide-detection) before [building the DO
 
 The [slide-times file](#slide-detection), `lecture.slide-times.txt`, remains a simple, editable list of slide boundaries. The [final DOCX](#building-the-docx) alternates between a landscape slide page and a portrait page of normal editable transcript text.
 
+## Desktop app
+
+Tagged releases provide an unsigned Linux x86_64 AppImage with the application, Python, FFmpeg, and FFprobe included. Download `Slides_DOCX-<version>-x86_64.AppImage` from [GitHub Releases](https://github.com/Dreyvor/Slides-docx/releases/latest), make it executable, and open it:
+
+```bash
+chmod +x Slides_DOCX-*-x86_64.AppImage
+./Slides_DOCX-*-x86_64.AppImage
+```
+
+The guided interface walks through choosing the video and captions, selecting or reusing a slide profile, reviewing the contact sheet, and creating the DOCX. It follows the desktop's light or dark appearance automatically. Advanced detection and screenshot settings remain available in collapsed panels. Because the preview is unsigned, some desktop environments may ask you to confirm that the downloaded file is trusted.
+
+To run the GUI from a source checkout instead:
+
+```bash
+pipx install '.[gui]'
+slides-docx-gui
+```
+
+The command-line interface remains available for automation and terminal workflows.
+
 ## Table of contents
 
+- [Desktop app](#desktop-app)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -94,6 +117,8 @@ flowchart TD
 
 ## Requirements
 
+The AppImage includes its runtime requirements. Command-line installations require:
+
 - [Python 3.10 or newer](https://www.python.org/downloads/)
 - [FFmpeg and FFprobe](https://ffmpeg.org/download.html), available on `PATH`
 - A desktop session for [visual crop selection](#selecting-and-reusing-slide-areas)
@@ -101,6 +126,8 @@ flowchart TD
 The Python dependencies (`python-docx`, `opencv-python`, and `platformdirs`) are installed automatically during [installation](#installation).
 
 ## Installation
+
+This section installs the command-line application. Linux desktop users can use the self-contained [AppImage](#desktop-app).
 
 [`pipx`](https://pipx.pypa.io/latest/how-to/install-pipx.html) installs the application in an isolated environment and makes `slides-docx` available in every terminal.
 
@@ -373,6 +400,13 @@ source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 ```
 
+Install the optional desktop interface when working on the GUI:
+
+```bash
+python3 -m pip install -e '.[gui]'
+python3 -m slides_docx.gui
+```
+
 On Windows, activate the environment with `.venv\Scripts\activate`.
 
 Run the CLI directly from a repository checkout with:
@@ -387,6 +421,8 @@ Run the automated tests with:
 ```bash
 python3 -m unittest
 ```
+
+The Linux AppImage build and its bundled FFmpeg license information live under `packaging/`. Tagged versions are assembled by the `Linux desktop preview` GitHub Actions workflow.
 
 ## License
 

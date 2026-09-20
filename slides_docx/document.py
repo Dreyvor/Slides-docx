@@ -46,7 +46,17 @@ def add_transcript(document, number, start_time, text):
     document.add_paragraph(text or "[No transcript assigned to this slide]")
 
 
-def build_document(video, vtt, slide_times, duration, output, lead=5.0, crop=None):
+def build_document(
+    video,
+    vtt,
+    slide_times,
+    duration,
+    output,
+    lead=5.0,
+    crop=None,
+    progress=None,
+    cancel=None,
+):
     video, vtt, output = Path(video), Path(vtt), Path(output)
     if not vtt.is_file():
         raise SlidesDocxError(f"VTT transcript does not exist: {vtt}")
@@ -66,15 +76,19 @@ def build_document(video, vtt, slide_times, duration, output, lead=5.0, crop=Non
     with tempfile.TemporaryDirectory(prefix="lecture_slides_") as directory:
         directory = Path(directory)
         for index, (start, _end, capture) in enumerate(ranges):
+            if cancel is not None:
+                cancel.raise_if_cancelled()
             number = index + 1
             # PNG avoids python-docx rejecting valid FFmpeg JPEGs that do not
             # contain the narrower JFIF/Exif marker layout it expects.
             screenshot = directory / f"slide_{number:03d}.png"
-            print(
+            message = (
                 f"Slide {number:02d}: starts {seconds_to_timestamp(start)}, "
                 f"screenshot {seconds_to_timestamp(capture)}"
             )
-            extract_frame(video, capture, screenshot, crop=crop)
+            if progress:
+                progress(number, len(ranges), message)
+            extract_frame(video, capture, screenshot, crop=crop, cancel=cancel)
             if number > 1:
                 set_landscape(document.add_section(WD_SECTION.NEW_PAGE))
             add_slide_image(document, screenshot)

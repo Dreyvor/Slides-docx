@@ -1,0 +1,4 @@
+#!/bin/sh
+APP_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+export SLIDES_DOCX_TOOL_DIR="$APP_ROOT/usr/lib/slides-docx/bin"
+exec "$APP_ROOT/usr/lib/slides-docx/app/slides-docx-gui" "$@"

@@ -1,0 +1,22 @@
+{
+  "files": [
+    "packaging/gui_entry.py",
+    "slides_docx/__init__.py",
+    "slides_docx/cli.py",
+    "slides_docx/completion.py",
+    "slides_docx/contact_sheet.py",
+    "slides_docx/content.py",
+    "slides_docx/crop.py",
+    "slides_docx/document.py",
+    "slides_docx/errors.py",
+    "slides_docx/profiles.py",
+    "slides_docx/services.py",
+    "slides_docx/timestamps.py",
+    "slides_docx/video.py",
+    "slides_docx/gui/__init__.py",
+    "slides_docx/gui/__main__.py",
+    "slides_docx/gui/app.py",
+    "slides_docx/gui/widgets.py",
+    "slides_docx/gui/icon.svg"
+  ]
+}

@@ -1,0 +1,134 @@
+name: Linux desktop preview
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl ffmpeg libegl1 libgl1 nasm pkg-config xz-utils
+          python -m pip install '.[desktop-build]'
+      - name: Run tests
+        run: |
+          python -m unittest
+          slides-docx-gui --version
+      - name: Select artifact version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="preview-${GITHUB_SHA::7}"
+          fi
+          echo "SLIDES_DOCX_VERSION=${version}" >> "$GITHUB_ENV"
+      - name: Cache compiled FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: build/appimage/ffmpeg-install
+          key: ffmpeg-9.0.1-linux-x86_64-lgpl
+      - name: Install AppImage tool
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage \
+            --output appimagetool
+          chmod +x appimagetool
+          ./appimagetool --appimage-extract >/dev/null
+          mv squashfs-root appimagetool-root
+          echo "APPIMAGETOOL=$PWD/appimagetool-root/AppRun" >> "$GITHUB_ENV"
+      - name: Build AppImage
+        run: packaging/build_appimage.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Slides-DOCX-Linux-x86_64
+          path: |
+            dist/*.AppImage
+            dist/SHA256SUMS
+            dist/THIRD_PARTY_NOTICES.md
+  smoke:
+    needs: build
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Slides-DOCX-Linux-x86_64
+          path: dist
+      - name: Install display smoke-test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y weston xvfb
+      - name: Extract and diagnose AppImage
+        run: |
+          appimage="$(find dist -maxdepth 1 -name '*.AppImage' -print -quit)"
+          chmod +x "$appimage"
+          "$appimage" --appimage-extract >/dev/null
+          QT_QPA_PLATFORM=offscreen ./squashfs-root/AppRun --diagnose
+      - name: Start GUI under X11
+        run: |
+          gui_status=0
+          timeout 5 xvfb-run -a ./squashfs-root/AppRun || gui_status=$?
+          if [[ "$gui_status" -ne 124 ]]; then
+            echo "X11 GUI startup returned unexpected status: $gui_status" >&2
+            exit 1
+          fi
+      - name: Start GUI under Wayland
+        run: |
+          runtime_dir="$RUNNER_TEMP/wayland-runtime"
+          mkdir -p "$runtime_dir"
+          chmod 700 "$runtime_dir"
+          XDG_RUNTIME_DIR="$runtime_dir" weston \
+            --backend=headless-backend.so \
+            --socket=wayland-ci \
+            --idle-time=0 \
+            --log="$RUNNER_TEMP/weston.log" &
+          weston_pid=$!
+          sleep 2
+          gui_status=0
+          timeout 5 env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            WAYLAND_DISPLAY=wayland-ci \
+            QT_QPA_PLATFORM=wayland \
+            ./squashfs-root/AppRun || gui_status=$?
+          kill "$weston_pid" || true
+          if [[ "$gui_status" -ne 124 ]]; then
+            cat "$RUNNER_TEMP/weston.log"
+            echo "Wayland GUI startup returned unexpected status: $gui_status" >&2
+            exit 1
+          fi
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Slides-DOCX-Linux-x86_64
+          path: dist
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/*.AppImage dist/SHA256SUMS dist/THIRD_PARTY_NOTICES.md \
+            --generate-notes \
+            --title "Slides DOCX ${GITHUB_REF_NAME}"
