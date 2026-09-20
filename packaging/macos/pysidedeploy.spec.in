@@ -2,25 +2,25 @@
 title = Slides DOCX
 project_dir = @PROJECT_DIR@
 input_file = @PROJECT_DIR@/packaging/gui_entry.py
-exec_directory = @PROJECT_DIR@/build/gui
+exec_directory = @PROJECT_DIR@/build/macos/deploy
 project_file = @PROJECT_DIR@/slides-docx-gui.pyproject
-icon = @PROJECT_DIR@/packaging/slides-docx.svg
+icon = @PROJECT_DIR@/packaging/macos/slides-docx.icns
 
 [python]
 python_path = @PYTHON_PATH@
 packages = nuitka,ordered_set,zstandard
-android_packages = 
+android_packages =
 
 [qt]
-qml_files = 
-excluded_qml_plugins = 
-modules = Core,DBus,Gui,Widgets
-plugins = platforminputcontexts,platforms,imageformats
+qml_files =
+excluded_qml_plugins =
+modules = Core,Gui,Widgets,Svg
+plugins = platforms,imageformats,iconengines,styles
 
 [android]
-wheel_pyside = 
-wheel_shiboken = 
-plugins = 
+wheel_pyside =
+wheel_shiboken =
+plugins =
 
 [nuitka]
 mode = standalone
@@ -28,9 +28,9 @@ extra_args = --quiet --noinclude-qt-translations --include-package=slides_docx -
 
 [buildozer]
 mode = debug
-recipe_dir = 
-jars_dir = 
-ndk_path = 
-sdk_path = 
-local_libs = 
-arch = 
+recipe_dir =
+jars_dir =
+ndk_path =
+sdk_path =
+local_libs =
+arch =

@@ -14,12 +14,12 @@ Read the root [README](../README.md) when changing user-facing commands or docum
 
 ## Current snapshot
 
-- Package: `presentation-transcript-docx` version `0.5.0`, Python `>=3.10`.
+- Package: `presentation-transcript-docx` version `0.6.0`, Python `>=3.10`.
 - Public CLI: `slides-docx`; source fallback: `python -m slides_docx`.
 - Optional desktop GUI: `slides-docx-gui`; source fallback: `python -m slides_docx.gui`.
 - Desktop stack: PySide6 with Qt Widgets, backed by the same synchronous service layer as the CLI.
-- Current packaged desktop target: unsigned Linux x86_64 AppImage with bundled Python, Qt, FFmpeg, and FFprobe.
-- Windows and macOS application packages have been discussed but are not implemented.
+- Packaged desktop targets: unsigned Linux x86_64 AppImage and ad-hoc-signed, unnotarized macOS 13+ Apple Silicon DMG. Both bundle Python, Qt, FFmpeg, and FFprobe.
+- Windows packaging, Intel/universal macOS builds, and signed/notarized distribution remain deferred.
 - Tests use `unittest`; CI covers CLI tests on Linux/macOS/Windows, the FFmpeg integration test on Linux, and Qt tests offscreen on Linux.
 
 ## Rules for future AI sessions

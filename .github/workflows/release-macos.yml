@@ -1,0 +1,87 @@
+name: macOS desktop preview
+
+on:
+  # workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install build tools
+        run: |
+          brew install nasm pkg-config
+          python -m pip install '.[desktop-build]'
+      - name: Run source tests
+        run: |
+          python -m unittest tests.test_unit tests.test_gui
+          slides-docx-gui --version
+      - name: Select artifact version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="preview-${GITHUB_SHA::7}"
+          fi
+          echo "SLIDES_DOCX_VERSION=${version}" >> "$GITHUB_ENV"
+      - name: Cache compiled FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: build/macos/ffmpeg-install
+          key: ffmpeg-9.0.1-macos13-arm64-lgpl-v1
+      - name: Build application and DMG
+        run: packaging/build_macos.sh
+      - name: Test synthetic pipeline with bundled media tools
+        env:
+          SLIDES_DOCX_TOOL_DIR: ${{ github.workspace }}/build/macos/Slides DOCX.app/Contents/Resources/bin
+        run: |
+          python_bin="$(command -v python)"
+          PATH=/usr/bin:/bin "$python_bin" -m unittest tests.test_integration
+      - name: Mount and smoke-test DMG
+        shell: bash
+        run: |
+          dmg="$(find dist -maxdepth 1 -name '*.dmg' -print -quit)"
+          mount_point="$RUNNER_TEMP/slides-docx-dmg"
+          mkdir -p "$mount_point"
+          hdiutil attach "$dmg" -mountpoint "$mount_point" -nobrowse
+          app="$mount_point/Slides DOCX.app"
+          executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          executable="$app/Contents/MacOS/$executable_name"
+          "$executable" --version
+          PATH=/usr/bin:/bin "$executable" --diagnose | tee "$RUNNER_TEMP/diagnose.txt"
+          grep -F '/Contents/Resources/bin/ffmpeg' "$RUNNER_TEMP/diagnose.txt"
+          grep -F '/Contents/Resources/bin/ffprobe' "$RUNNER_TEMP/diagnose.txt"
+          QT_QPA_PLATFORM=offscreen "$executable" &
+          gui_pid=$!
+          sleep 5
+          kill -0 "$gui_pid"
+          kill "$gui_pid"
+          wait "$gui_pid" || true
+      - name: Detach DMG
+        if: always()
+        run: |
+          mount_point="$RUNNER_TEMP/slides-docx-dmg"
+          if mount | grep -Fq "on $mount_point "; then
+            hdiutil detach "$mount_point"
+          fi
+      - name: Verify native bundle and signatures
+        run: |
+          python packaging/macos/verify_bundle.py "build/macos/Slides DOCX.app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Slides-DOCX-macOS-arm64
+          path: |
+            dist/*.dmg
+            dist/SHA256SUMS-macOS-arm64
+            dist/THIRD_PARTY_NOTICES-macOS-arm64.md

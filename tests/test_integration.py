@@ -1,5 +1,4 @@
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,9 +12,10 @@ from docx import Document
 from docx.enum.section import WD_ORIENT
 
 from slides_docx.profiles import ProfileStore, make_profile
+from slides_docx.video import resolve_tool
 
 
-@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg is required")
+@unittest.skipUnless(resolve_tool("ffmpeg") and resolve_tool("ffprobe"), "FFmpeg is required")
 class PipelineIntegrationTests(unittest.TestCase):
     def test_detect_and_build_use_same_crop(self):
         repository = Path(__file__).resolve().parents[1]
@@ -32,7 +32,7 @@ class PipelineIntegrationTests(unittest.TestCase):
                 "[a][b][c][d]concat=n=4:v=1:a=0"
             )
             subprocess.run(
-                ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", filter_graph,
+                [resolve_tool("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", filter_graph,
                  "-c:v", "ffv1", str(video)],
                 check=True,
             )

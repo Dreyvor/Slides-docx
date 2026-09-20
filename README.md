@@ -10,7 +10,7 @@
 
 [Watch the 40-second demo](docs/assets/demo.mp4)
 
-[Download the Linux desktop preview](https://github.com/Dreyvor/Slides-docx/releases/latest) — Python and FFmpeg are included.
+[Download a desktop preview](https://github.com/Dreyvor/Slides-docx/releases/latest) for Linux or Apple Silicon macOS — Python and FFmpeg are included.
 
 ## See the result
 
@@ -55,14 +55,39 @@ The [slide-times file](#slide-detection), `lecture.slide-times.txt`, remains a s
 
 ## Desktop app
 
-Tagged releases provide an unsigned Linux x86_64 AppImage with the application, Python, FFmpeg, and FFprobe included. Download `Slides_DOCX-<version>-x86_64.AppImage` from [GitHub Releases](https://github.com/Dreyvor/Slides-docx/releases/latest), make it executable, and open it:
+The guided interface walks through choosing the video and captions, selecting or reusing a slide profile, reviewing the contact sheet, and creating the DOCX. It follows the desktop's light or dark appearance automatically. Advanced detection and screenshot settings remain available in collapsed panels.
+
+### Linux desktop preview
+
+Download `Slides_DOCX-<version>-x86_64.AppImage` from [GitHub Releases](https://github.com/Dreyvor/Slides-docx/releases/latest), make it executable, and open it:
 
 ```bash
 chmod +x Slides_DOCX-*-x86_64.AppImage
 ./Slides_DOCX-*-x86_64.AppImage
 ```
 
-The guided interface walks through choosing the video and captions, selecting or reusing a slide profile, reviewing the contact sheet, and creating the DOCX. It follows the desktop's light or dark appearance automatically. Advanced detection and screenshot settings remain available in collapsed panels. Because the preview is unsigned, some desktop environments may ask you to confirm that the downloaded file is trusted.
+Because the preview is unsigned, some desktop environments may ask you to confirm that the downloaded file is trusted.
+
+### macOS desktop preview
+
+The macOS preview supports **macOS 13 or newer on Apple Silicon (M1 or later)**. Download `Slides_DOCX-<version>-macOS-arm64.dmg` from [GitHub Releases](https://github.com/Dreyvor/Slides-docx/releases/latest), open the disk image, and drag **Slides DOCX** to the **Applications** shortcut.
+
+This preview is ad-hoc signed but has no Apple Developer ID signature or notarization. On the first launch, macOS will show a Gatekeeper warning:
+
+1. Try to open **Slides DOCX** from Applications, then close the warning.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll to the security message for Slides DOCX and choose **Open Anyway**.
+4. Confirm **Open** when macOS asks again.
+
+This is Apple's application-specific [documented override flow](https://support.apple.com/en-gb/102445); you do not need to disable Gatekeeper or remove quarantine protection. A managed Mac may prevent this override according to its administrator's policy.
+
+Each release also provides `SHA256SUMS-macOS-arm64`. Verify the downloaded disk image from its folder with:
+
+```bash
+shasum -a 256 -c SHA256SUMS-macOS-arm64
+```
+
+Both desktop downloads contain Python, Qt, FFmpeg, FFprobe, and their runtime dependencies. They do not require Homebrew, pipx, or a system FFmpeg installation.
 
 To run the GUI from a source checkout instead:
 
@@ -76,6 +101,8 @@ The command-line interface remains available for automation and terminal workflo
 ## Table of contents
 
 - [Desktop app](#desktop-app)
+  - [Linux desktop preview](#linux-desktop-preview)
+  - [macOS desktop preview](#macos-desktop-preview)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -117,7 +144,7 @@ flowchart TD
 
 ## Requirements
 
-The AppImage includes its runtime requirements. Command-line installations require:
+The desktop downloads include their runtime requirements. Command-line installations require:
 
 - [Python 3.10 or newer](https://www.python.org/downloads/)
 - [FFmpeg and FFprobe](https://ffmpeg.org/download.html), available on `PATH`
@@ -127,7 +154,7 @@ The Python dependencies (`python-docx`, `opencv-python`, and `platformdirs`) are
 
 ## Installation
 
-This section installs the command-line application. Linux desktop users can use the self-contained [AppImage](#desktop-app).
+This section installs the command-line application. Desktop users can instead use the self-contained [Linux AppImage](#linux-desktop-preview) or [Apple Silicon macOS application](#macos-desktop-preview).
 
 [`pipx`](https://pipx.pypa.io/latest/how-to/install-pipx.html) installs the application in an isolated environment and makes `slides-docx` available in every terminal.
 
@@ -238,19 +265,19 @@ For each setting, an option supplied on the command line takes precedence over t
 
 ## Slide detection
 
-The default scene-change threshold is `12`. Use a higher value for fewer detections when animations or bullet reveals cause false changes:
+The default scene-change threshold is `3`. Use a higher value for fewer detections when animations or bullet reveals cause false changes:
 
 ```bash
-slides-docx detect lecture.mp4 --threshold 14
+slides-docx detect lecture.mp4 --threshold 6
 ```
 
-Use a lower value such as `8` or `10` when real slide changes are missed.
+Use a lower value such as `1` or `2` when real slide changes are missed.
 
 Save a preferred detection configuration in a [profile](#selecting-and-reusing-slide-areas) by naming it explicitly:
 
 ```bash
 slides-docx detect lecture.mp4 --profile university \
-  --threshold 14 --min-gap 1.2 --no-contact-sheet
+  --threshold 6 --min-gap 1.2 --no-contact-sheet
 ```
 
 Future detections using the `university` profile reuse these values. Supplying only one of these options updates only that setting; the other saved values remain unchanged.
@@ -327,7 +354,7 @@ slides-docx build lecture.mp4 lecture.vtt --date 17.09.2026
 
 This creates `2026_09_17-lecture.docx`.
 
-Screenshots are normally taken five seconds before the following slide appears, which tends to capture completed bullet lists and diagrams. Change that offset with:
+Screenshots are normally taken one second before the following slide appears, which tends to capture completed bullet lists and diagrams. Change that offset with:
 
 ```bash
 slides-docx build lecture.mp4 lecture.vtt --lead 2
@@ -447,7 +474,7 @@ Run the automated tests with:
 python3 -m unittest
 ```
 
-The Linux AppImage build and its bundled FFmpeg license information live under `packaging/`. Tagged versions are assembled by the `Linux desktop preview` GitHub Actions workflow.
+Desktop build scripts and bundled dependency notices live under `packaging/`. All workflows can be started manually from the GitHub Actions page. Linux and macOS preview workflows build and smoke-test their native artifacts independently. A tag matching `v*` publishes both platforms to one GitHub Release only after both workflows pass; manual desktop runs upload preview artifacts without publishing a release.
 
 ## License
 

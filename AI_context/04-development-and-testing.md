@@ -40,7 +40,7 @@ python3 -m slides_docx.gui --version
 # Packaging and whitespace sanity
 python3 -m build
 git diff --check
-bash -n packaging/build_appimage.sh packaging/linux/AppRun
+bash -n packaging/build_appimage.sh packaging/build_macos.sh packaging/linux/AppRun
 ```
 
 Do not add low-value tests that merely repeat implementation. Add tests for behavioral contracts, regression-prone data flow, platform behavior, or destructive failure cases.
@@ -55,13 +55,17 @@ Tests use temporary directories and test-specific `ProfileStore` paths. Do not r
 
 ## CI
 
-`.github/workflows/tests.yml` runs on every push and pull request:
+`.github/workflows/tests.yml` runs on every push and pull request and can also be started manually from the GitHub Actions page:
 
 - Unit tests and CLI smoke tests on Ubuntu, macOS, and Windows with Python 3.10.
 - FFmpeg integration on Ubuntu.
 - GUI tests on Ubuntu with `QT_QPA_PLATFORM=offscreen`.
 
-`.github/workflows/release-linux.yml` runs manually and on `v*` tags. It builds on Ubuntu 22.04, runs tests, creates the AppImage, then smoke-tests its extracted contents on Ubuntu 22.04 and 24.04 under offscreen Qt, X11, and headless Wayland. Tagged runs publish GitHub Release assets after smoke tests pass.
+`.github/workflows/release-linux.yml` is reusable and manually dispatchable. It builds on Ubuntu 22.04, runs tests, creates the AppImage, then smoke-tests its extracted contents on Ubuntu 22.04 and 24.04 under offscreen Qt, X11, and headless Wayland.
+
+`.github/workflows/release-macos.yml` is reusable and manually dispatchable. It runs on the arm64 `macos-14` runner, tests the source, compiles the pinned LGPL FFmpeg, freezes and ad-hoc signs the app, builds the DMG, exercises the bundled tools with the synthetic pipeline, mounts and launches the result, and validates Mach-O architectures, dependency paths, and signatures.
+
+`.github/workflows/release-desktop.yml` is the sole publisher and is also manually dispatchable. For `v*` tags it calls both platform workflows and creates one GitHub Release only after both platform jobs succeed. A manual combined, Linux-only, or macOS-only run uploads Actions artifacts without publishing a release.
 
 The README badge points at the `tests.yml` workflow in `Dreyvor/Slides-docx`.
 

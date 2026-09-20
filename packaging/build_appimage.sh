@@ -45,8 +45,11 @@ fi
 
 rm -rf "${repository}/build/gui"
 mkdir -p "${repository}/build/gui"
+deploy_spec="${build_root}/pysidedeploy.spec"
+python3 "${repository}/packaging/render_deploy_spec.py" \
+    "${repository}/pysidedeploy.spec" "${deploy_spec}"
 pushd "${repository}" >/dev/null
-pyside6-deploy -c pysidedeploy.spec --force
+pyside6-deploy -c "${deploy_spec}" --force
 popd >/dev/null
 
 frozen_dir="$(find "${repository}/build/gui" -maxdepth 2 -type d -name '*.dist' -print -quit)"
@@ -94,5 +97,6 @@ chmod +x "${app_dir}/AppRun" "${app_dir}/usr/lib/slides-docx/app/slides-docx-gui
 appimagetool="${APPIMAGETOOL:-appimagetool}"
 ARCH=x86_64 "${appimagetool}" "${app_dir}" \
     "${dist_dir}/Slides_DOCX-${SLIDES_DOCX_VERSION:-preview}-x86_64.AppImage"
-(cd "${dist_dir}" && sha256sum ./*.AppImage > SHA256SUMS)
-cp "${repository}/packaging/THIRD_PARTY_NOTICES.md" "${dist_dir}/"
+(cd "${dist_dir}" && sha256sum ./*.AppImage > SHA256SUMS-Linux-x86_64)
+cp "${repository}/packaging/THIRD_PARTY_NOTICES.md" \
+    "${dist_dir}/THIRD_PARTY_NOTICES-Linux-x86_64.md"

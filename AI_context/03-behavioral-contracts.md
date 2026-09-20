@@ -20,10 +20,10 @@ Built-in defaults:
 
 - Selection preview: 30 seconds, clamped to 0.15 seconds before video end.
 - Profile name for selection: `default`.
-- Scene threshold: `12.0`, valid range `0..100`.
+- Scene threshold: `3.0`, valid range `0..100`.
 - Minimum scene-change gap: `0.8` seconds; `0` disables merging.
 - Contact sheet: enabled.
-- Screenshot lead: `5.0` seconds.
+- Screenshot lead: `1.0` second.
 - Slide screenshots in the DOCX: enabled.
 
 The first slide always starts at `0.0`. A detection result containing `N` transitions represents `N + 1` slides.
@@ -76,7 +76,7 @@ Configuration version remains `1`. Each profile stores pixel coordinates, source
       "updated_at": "<UTC ISO-8601>",
       "settings": {
         "detect": {
-          "threshold": 14.0,
+          "threshold": 6.0,
           "min_gap": 1.2,
           "contact_sheet": true
         },

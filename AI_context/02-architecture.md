@@ -69,10 +69,11 @@ Tool resolution order is:
 
 1. `SLIDES_DOCX_TOOL_DIR`.
 2. The AppImage `APPDIR` bundled-tool location.
-3. `tools`, `bin`, or the executable directory beside the frozen application.
-4. The user's `PATH`.
+3. `Contents/Resources/bin` relative to a macOS `.app/Contents/MacOS` executable.
+4. `tools`, `bin`, or the executable directory beside another frozen application.
+5. The user's `PATH`.
 
-Windows tool names receive `.exe` automatically. This resolver is the cross-platform seam for future Windows and macOS bundles.
+Windows tool names receive `.exe` automatically. The macOS bundle keeps `ffmpeg` and `ffprobe` under `Slides DOCX.app/Contents/Resources/bin`; they are found without Homebrew or changes to `PATH`.
 
 Detection applies `crop`, then `scale=640:-2`, then FFmpeg's `scdet` filter. FFmpeg sends machine-readable progress on stderr and scene metadata on stdout; these streams are consumed separately to prevent blocking.
 
@@ -100,3 +101,9 @@ Optional `gui` dependency:
 - `PySide6`
 
 Optional `desktop-build` dependencies add Nuitka and its build helpers. The `pyproject.toml` dependency declarations are authoritative; `requirements.txt` contains `.` as a compatibility installation route.
+
+## Desktop bundle layouts
+
+The Linux AppImage uses `Slides_DOCX.AppDir/usr/lib/slides-docx/` for the frozen application and media tools. The macOS artifact uses a standard `Slides DOCX.app` bundle: the frozen executable and Qt frameworks live under `Contents`, media tools are in `Contents/Resources/bin`, and FFmpeg/Python license inventories are in `Contents/Resources/licenses`.
+
+`pysidedeploy.spec` and `packaging/macos/pysidedeploy.spec.in` are templates. `packaging/render_deploy_spec.py` inserts the checkout and active Python paths at build time, keeping machine-specific paths out of source control.

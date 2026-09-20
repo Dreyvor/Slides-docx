@@ -254,6 +254,20 @@ class ServiceJobTests(unittest.TestCase):
         with patch.dict("os.environ", {"SLIDES_DOCX_TOOL_DIR": str(tool.parent)}):
             self.assertEqual(resolve_tool("ffmpeg"), str(tool))
 
+    def test_macos_app_resource_tool_precedes_path(self):
+        executable = (
+            self.root / "Slides DOCX.app" / "Contents" / "MacOS" / "slides-docx-gui"
+        )
+        tool = executable.parent.parent / "Resources" / "bin" / "ffmpeg"
+        tool.parent.mkdir(parents=True)
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.touch()
+        tool.write_text("#!/bin/sh\n")
+        tool.chmod(0o755)
+        with patch("slides_docx.video.sys.executable", str(executable)), \
+             patch("slides_docx.video.shutil.which", return_value=None):
+            self.assertEqual(resolve_tool("ffmpeg"), str(tool))
+
     def test_preview_clamps_time_and_reports_progress(self):
         output = self.root / "preview.png"
         events = []

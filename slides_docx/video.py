@@ -38,6 +38,7 @@ def resolve_tool(name):
     executable_dir = Path(sys.executable).resolve().parent
     candidates.extend(
         (
+            executable_dir.parent / "Resources" / "bin" / filename,
             executable_dir / "tools" / filename,
             executable_dir / "bin" / filename,
             executable_dir / filename,

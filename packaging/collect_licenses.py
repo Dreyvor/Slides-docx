@@ -8,10 +8,13 @@ from pathlib import Path
 
 PACKAGES = (
     "PySide6",
+    "PySide6-Essentials",
+    "PySide6-Addons",
     "shiboken6",
     "opencv-python",
     "numpy",
     "python-docx",
+    "lxml",
     "platformdirs",
 )
 
@@ -47,6 +50,8 @@ def main(output):
     (output / "PYTHON_PACKAGES.md").write_text(
         "\n".join(inventory) + "\n", encoding="utf-8"
     )
+    pyside_license = Path(__file__).with_name("licenses") / "LGPL-3.0.txt"
+    shutil.copy2(pyside_license, output / "PySide6-LGPL-3.0.txt")
 
 
 if __name__ == "__main__":

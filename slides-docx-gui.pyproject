@@ -16,6 +16,7 @@
     "slides_docx/gui/__init__.py",
     "slides_docx/gui/__main__.py",
     "slides_docx/gui/app.py",
+    "slides_docx/gui/theme.py",
     "slides_docx/gui/widgets.py",
     "slides_docx/gui/icon.svg"
   ]

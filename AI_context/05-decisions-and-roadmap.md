@@ -34,9 +34,11 @@ Profiles may remember detection and build settings, but the CLI writes them only
 
 The project was unpublished when legacy wrappers were removed. `slides-docx`, `python -m slides_docx`, `slides-docx-gui`, and `python -m slides_docx.gui` are the supported interfaces. Backward compatibility starts with the first published release, not the deleted prototypes.
 
-### Linux-first desktop release
+### Self-contained desktop releases
 
-The first self-contained target is an unsigned Linux x86_64 AppImage. It bundles Python, Qt, OpenCV, `python-docx`, FFmpeg, FFprobe, and license material so end users do not install runtimes. FFmpeg is pinned and built without GPL, nonfree, or version-3-only components.
+The first self-contained target was an unsigned Linux x86_64 AppImage. The second is a macOS 13+ Apple Silicon DMG. Both bundle Python, Qt, OpenCV, `python-docx`, FFmpeg, FFprobe, and license material so end users do not install runtimes. FFmpeg is pinned and built without GPL, nonfree, or version-3-only components.
+
+The macOS preview is ad-hoc signed for Apple Silicon compatibility but has no Developer ID signature or notarization. Users follow Apple's per-application **Privacy & Security → Open Anyway** flow. Documentation must not recommend disabling Gatekeeper or globally removing quarantine. Managed Macs may prohibit the override.
 
 ### System-aware appearance
 
@@ -56,28 +58,34 @@ Linux packaging consists of:
 - `appimagetool` conversion, SHA-256 checksums, and dependency license inventory.
 - Release smoke tests that extract the AppImage rather than requiring FUSE.
 
-Before relying on a fresh release build, validate these current configuration details:
+macOS packaging consists of:
 
-- `pysidedeploy.spec` contains a machine-specific `python_path` pointing under `/tmp`; make this portable or generate it in CI.
-- `slides-docx-gui.pyproject` should explicitly include newly added GUI files such as `slides_docx/gui/theme.py`, even though Nuitka's package inclusion may discover imports.
-- A workflow file proves intended automation, not that a GitHub Release has actually completed. Check the repository's Actions and Releases state before claiming an artifact is published.
+- A macOS-specific `pyside6-deploy` template with Cocoa/Widgets/SVG/image plugin support.
+- `Slides DOCX.app` metadata for bundle ID `io.github.dreyvor.slidesdocx`, Education category, minimum macOS 13, and package-sourced version.
+- FFmpeg and FFprobe under `Contents/Resources/bin`, with notices and inventories under `Contents/Resources/licenses`.
+- Arm64 thinning, nested ad-hoc signing, strict signature verification, and a compressed DMG with an Applications shortcut.
+- A release smoke test that mounts the DMG, checks `--version`/`--diagnose`, starts Qt offscreen, and verifies there are no external non-system dynamic-library paths.
 
-## Windows and macOS status
+Deployment specs are rendered with the active Python and checkout paths during each build; no machine-specific Python path is committed. The GUI project manifest explicitly includes `theme.py`.
 
-No native Windows installer or macOS DMG exists yet. The application code and bundled-tool resolver are designed for them, but each artifact must be built on its target operating system.
+A workflow file proves intended automation, not that a GitHub Release has actually completed. Check the repository's Actions and Releases state before claiming an artifact is published.
+
+## Windows and additional macOS targets
+
+No native Windows installer exists. The application code and bundled-tool resolver are designed for it, but the artifact must be built and tested on Windows.
 
 Likely next packaging sequence:
 
 1. Unsigned Windows x86_64 preview to validate demand and packaging.
 2. Signed Windows distribution if nontechnical users adopt it.
-3. macOS Apple Silicon DMG, signed and notarized for a low-friction public release.
+3. Developer ID signing and notarization for the existing Apple Silicon DMG when a low-friction public release is justified.
 4. Intel or universal macOS support only when user demand justifies the additional native-dependency work.
 
-Unsigned Windows builds normally trigger SmartScreen and may be blocked by Smart App Control or institutional policy. Unsigned/unnotarized macOS builds require users to override Gatekeeper through Privacy & Security and are a poor fit for the project's approachable-user goal. Signing reduces friction but adds identity verification and recurring program/certificate costs.
+Unsigned Windows builds normally trigger SmartScreen and may be blocked by Smart App Control or institutional policy. Signing reduces friction but adds identity verification and recurring program/certificate costs.
 
 ## Deferred product work
 
-- Windows and macOS release pipelines, installers, signing, and notarization.
+- Windows packaging; Developer ID signing and notarization; Intel/universal macOS builds.
 - In-GUI transition editing or deletion.
 - Automatic updater or store distribution.
 - Crash reporting or telemetry; none is currently collected.

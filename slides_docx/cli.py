@@ -120,7 +120,7 @@ def create_parser():
         "--threshold",
         type=threshold_value,
         default=None,
-        help="Scene-change threshold (built-in default: 12)",
+        help=f"Scene-change threshold (built-in default: {DEFAULT_THRESHOLD:g})",
     )
     detect.add_argument(
         "--min-gap",
@@ -151,7 +151,7 @@ def create_parser():
         "--lead",
         type=lead_value,
         default=None,
-        help="Screenshot lead time in seconds (built-in default: 5)",
+        help=f"Screenshot lead time in seconds (built-in default: {DEFAULT_LEAD:g})",
     )
     build.add_argument(
         "--slide-images",
