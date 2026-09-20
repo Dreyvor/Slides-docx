@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import io
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -247,18 +248,20 @@ class ServiceJobTests(unittest.TestCase):
         )
 
     def test_bundled_tool_directory_precedes_path(self):
-        tool = self.root / "tools" / "ffmpeg"
+        tool_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+        tool = self.root / "tools" / tool_name
         tool.parent.mkdir()
         tool.write_text("#!/bin/sh\n")
         tool.chmod(0o755)
         with patch.dict("os.environ", {"SLIDES_DOCX_TOOL_DIR": str(tool.parent)}):
-            self.assertEqual(resolve_tool("ffmpeg"), str(tool))
+            self.assertTrue(Path(resolve_tool("ffmpeg")).samefile(tool))
 
     def test_macos_app_resource_tool_precedes_path(self):
         executable = (
             self.root / "Slides DOCX.app" / "Contents" / "MacOS" / "slides-docx-gui"
         )
-        tool = executable.parent.parent / "Resources" / "bin" / "ffmpeg"
+        tool_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+        tool = executable.parent.parent / "Resources" / "bin" / tool_name
         tool.parent.mkdir(parents=True)
         executable.parent.mkdir(parents=True, exist_ok=True)
         executable.touch()
@@ -266,7 +269,7 @@ class ServiceJobTests(unittest.TestCase):
         tool.chmod(0o755)
         with patch("slides_docx.video.sys.executable", str(executable)), \
              patch("slides_docx.video.shutil.which", return_value=None):
-            self.assertEqual(resolve_tool("ffmpeg"), str(tool))
+            self.assertTrue(Path(resolve_tool("ffmpeg")).samefile(tool))
 
     def test_preview_clamps_time_and_reports_progress(self):
         output = self.root / "preview.png"

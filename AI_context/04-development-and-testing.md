@@ -59,7 +59,8 @@ Tests use temporary directories and test-specific `ProfileStore` paths. Do not r
 
 - Unit tests and CLI smoke tests on Ubuntu, macOS, and Windows with Python 3.10.
 - FFmpeg integration on Ubuntu.
-- GUI tests on Ubuntu with `QT_QPA_PLATFORM=offscreen`.
+- GUI tests on Ubuntu with `QT_QPA_PLATFORM=offscreen`; the job installs the
+  `libegl1` and `libgl1` runtime libraries required to import PySide6.
 
 `.github/workflows/release-linux.yml` is reusable and manually dispatchable. It builds on Ubuntu 22.04, runs tests, creates the AppImage, then smoke-tests its extracted contents on Ubuntu 22.04 and 24.04 under offscreen Qt, X11, and headless Wayland.
 
