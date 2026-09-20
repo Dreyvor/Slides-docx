@@ -39,6 +39,7 @@ from slides_docx.services import (
     PreviewRequest,
     build_docx,
     detect_slides,
+    ensure_output_suffix,
     extract_preview,
 )
 from slides_docx.video import VideoInfo, merge_rapid_scene_changes, resolve_tool
@@ -70,21 +71,29 @@ class ProfileTests(unittest.TestCase):
             "lecture", "detect", {"threshold": 14.0, "contact_sheet": False}
         )
         self.store.update_settings("lecture", "detect", {"min_gap": 1.2})
-        self.store.update_settings("lecture", "build", {"lead": 2.0})
+        self.store.update_settings(
+            "lecture", "build", {"lead": 2.0, "slide_images": False}
+        )
 
         _name, saved = self.store.get_profile("lecture")
         self.assertEqual(
             profile_settings(saved, "detect"),
             {"threshold": 14.0, "contact_sheet": False, "min_gap": 1.2},
         )
-        self.assertEqual(profile_settings(saved, "build"), {"lead": 2.0})
+        self.assertEqual(
+            profile_settings(saved, "build"),
+            {"lead": 2.0, "slide_images": False},
+        )
         self.assertEqual(profile_fingerprint(saved), crop_fingerprint)
 
         replacement = make_profile((1500, 850, 120, 70), 1920, 1080)
         self.store.set_profile("lecture", replacement)
         _name, replaced = self.store.get_profile("lecture")
         self.assertEqual(profile_settings(replaced, "detect"), profile_settings(saved, "detect"))
-        self.assertEqual(profile_settings(replaced, "build"), {"lead": 2.0})
+        self.assertEqual(
+            profile_settings(replaced, "build"),
+            {"lead": 2.0, "slide_images": False},
+        )
         self.assertNotEqual(profile_fingerprint(replaced), crop_fingerprint)
 
     def test_invalid_saved_setting_is_rejected(self):
@@ -95,6 +104,16 @@ class ProfileTests(unittest.TestCase):
             encoding="utf-8",
         )
         with self.assertRaisesRegex(SlidesDocxError, "detect.threshold"):
+            self.store.load()
+
+    def test_slide_image_setting_requires_a_boolean(self):
+        profile = dict(self.profile)
+        profile["settings"] = {"build": {"slide_images": 0}}
+        self.store.path.write_text(
+            json.dumps({"version": 1, "active_profile": "bad", "profiles": {"bad": profile}}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(SlidesDocxError, "build.slide_images"):
             self.store.load()
 
     def test_existing_profile_without_settings_remains_valid(self):
@@ -213,6 +232,20 @@ class ServiceJobTests(unittest.TestCase):
         with self.assertRaises(JobCancelledError):
             token.raise_if_cancelled()
 
+    def test_generated_output_suffixes_are_case_insensitive(self):
+        self.assertEqual(
+            ensure_output_suffix(self.root / "lecture notes", ".docx"),
+            self.root / "lecture notes.docx",
+        )
+        self.assertEqual(
+            ensure_output_suffix(self.root / "lecture.DOCX", ".docx"),
+            self.root / "lecture.DOCX",
+        )
+        self.assertEqual(
+            ensure_output_suffix(self.root / "contact.JPEG", ".jpg", (".jpeg",)),
+            self.root / "contact.JPEG",
+        )
+
     def test_bundled_tool_directory_precedes_path(self):
         tool = self.root / "tools" / "ffmpeg"
         tool.parent.mkdir()
@@ -236,8 +269,8 @@ class ServiceJobTests(unittest.TestCase):
 
     def test_detect_uses_services_and_persists_only_requested_settings(self):
         video = self.root / "lecture.mp4"
-        output = self.root / "lecture.slide-times.txt"
-        contact = self.root / "lecture.contact-sheet.jpg"
+        output = self.root / "lecture.slide-times"
+        contact = self.root / "lecture.contact-sheet"
         events = []
         selection = CropSelection((600, 300, 20, 10), "profile", "room", "fingerprint")
         request = DetectRequest(
@@ -258,7 +291,8 @@ class ServiceJobTests(unittest.TestCase):
              patch("slides_docx.services.create_contact_sheet"):
             result = detect_slides(request, self.store, events.append)
         self.assertEqual(result.slide_count, 2)
-        self.assertEqual(result.contact_sheet, contact)
+        self.assertEqual(result.slide_times, self.root / "lecture.slide-times.txt")
+        self.assertEqual(result.contact_sheet, self.root / "lecture.contact-sheet.jpg")
         saved = profile_settings(self.store.get_profile("room")[1], "detect")
         self.assertEqual(saved, {"threshold": 14, "contact_sheet": True})
         self.assertEqual(events[-1].stage, "done")
@@ -283,7 +317,7 @@ class ServiceJobTests(unittest.TestCase):
         video = self.root / "lecture.mp4"
         vtt = self.root / "lecture.vtt"
         times = self.root / "lecture.slide-times.txt"
-        output = self.root / "lecture.docx"
+        output = self.root / "lecture notes"
         selection = CropSelection((600, 300, 20, 10), "profile", "room", "fingerprint")
         request = BuildRequest(
             video,
@@ -291,6 +325,7 @@ class ServiceJobTests(unittest.TestCase):
             slide_times=times,
             output=output,
             lead=2,
+            slide_images=False,
             course_date=date(2026, 9, 17),
             persist_profile_settings=True,
             settings_profile="room",
@@ -302,10 +337,13 @@ class ServiceJobTests(unittest.TestCase):
              patch("slides_docx.services.build_document", return_value=2):
             result = build_docx(request, self.store)
         self.assertEqual(result.slide_count, 2)
-        self.assertEqual(result.output, self.root / "2026_09_17-lecture.docx")
+        self.assertEqual(result.output, self.root / "2026_09_17-lecture notes.docx")
+        self.assertFalse(
+            result.settings["slide_images"]
+        )
         self.assertEqual(
             profile_settings(self.store.get_profile("room")[1], "build"),
-            {"lead": 2},
+            {"lead": 2, "slide_images": False},
         )
 
 
@@ -325,6 +363,14 @@ class CompletionTests(unittest.TestCase):
         )
         self.assertIn("--threshold", options)
         self.assertIn("--profile", options)
+        self.assertIn("--contact-output", options)
+        build_options = complete(
+            self.parser,
+            ["slides-docx", "build", "lecture.mp4", "lecture.vtt", "--"],
+            4,
+        )
+        self.assertIn("--slide-images", build_options)
+        self.assertIn("--no-slide-images", build_options)
         self.assertEqual(
             complete(self.parser, ["slides-docx", "completion", "po"], 2),
             ["powershell"],

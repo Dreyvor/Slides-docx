@@ -108,6 +108,45 @@ class PipelineIntegrationTests(unittest.TestCase):
                     )
                     self.assertEqual(image.shape[:2], (360, 480))
 
+            transcript_only = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "slides_docx",
+                    "build",
+                    str(video),
+                    str(vtt),
+                    "--no-slide-images",
+                    "--output",
+                    str(root / "official slides notes"),
+                ],
+                cwd=repository,
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(
+                transcript_only.returncode,
+                0,
+                transcript_only.stdout + transcript_only.stderr,
+            )
+            transcript_output = root / "official slides notes.docx"
+            transcript_document = Document(transcript_output)
+            self.assertEqual(len(transcript_document.inline_shapes), 0)
+            self.assertEqual(
+                [section.orientation for section in transcript_document.sections],
+                [WD_ORIENT.PORTRAIT] * 2,
+            )
+            transcript_text = "\n".join(
+                paragraph.text for paragraph in transcript_document.paragraphs
+            )
+            self.assertIn("First slide.", transcript_text)
+            self.assertIn("Second slide.", transcript_text)
+            with zipfile.ZipFile(transcript_output) as archive:
+                self.assertFalse(
+                    any(name.startswith("word/media/") for name in archive.namelist())
+                )
+
             store.set_profile("lecture", make_profile((400, 360, 0, 0), 640, 360))
             changed = subprocess.run(
                 [sys.executable, "-m", "slides_docx", "build", str(video), str(vtt)],

@@ -230,7 +230,7 @@ slides-docx profiles delete zoom
 
 An active profile cannot be deleted until another profile is activated. A saved crop scales automatically for videos with the same aspect ratio. Videos with a materially different aspect ratio require a new selection.
 
-Profiles can also remember reusable processing settings. When `--profile NAME` is explicitly combined with `--threshold`, `--min-gap`, `--contact-sheet`, `--no-contact-sheet`, or `--lead`, those supplied values are saved after the command succeeds. Selecting the crop again under the same profile name preserves its settings.
+Profiles can also remember reusable processing settings. When `--profile NAME` is explicitly combined with `--threshold`, `--min-gap`, `--contact-sheet`, `--no-contact-sheet`, `--lead`, `--slide-images`, or `--no-slide-images`, those supplied values are saved after the command succeeds. Selecting the crop again under the same profile name preserves its settings.
 
 For each setting, an option supplied on the command line takes precedence over the saved profile value, which takes precedence over the built-in default. Saved values are used when the profile is selected explicitly, is active, or is referenced by a slide-times file. Options used without an explicit `--profile` affect only that run.
 
@@ -270,6 +270,16 @@ Detection also creates `lecture.contact-sheet.jpg`, containing labeled thumbnail
 slides-docx detect lecture.mp4 --no-contact-sheet
 ```
 
+Choose custom artifact names with `--output` and `--contact-output`. Missing format extensions are added automatically:
+
+```bash
+slides-docx detect lecture.mp4 \
+  --output reviewed-transitions \
+  --contact-output slide-overview
+```
+
+This creates `reviewed-transitions.txt` and `slide-overview.jpg`. Existing `.jpg` and `.jpeg` contact-sheet extensions are both accepted.
+
 If a profile has contact sheets disabled, enable and save them again with:
 
 ```bash
@@ -307,6 +317,8 @@ slides-docx build lecture.mp4 lecture.vtt \
   --output notes.docx
 ```
 
+The `.docx` extension is added automatically when it is missing from `--output`.
+
 Add the course date with `DD.MM.YYYY`:
 
 ```bash
@@ -325,6 +337,19 @@ Combine `--lead` with an [explicit profile](#selecting-and-reusing-slide-areas) 
 
 ```bash
 slides-docx build lecture.mp4 lecture.vtt --profile university --lead 2
+```
+
+When official lecture slides are available separately, create a smaller transcript-only document and use the contact sheet for rapid visual reference:
+
+```bash
+slides-docx build lecture.mp4 lecture.vtt --no-slide-images
+```
+
+The resulting DOCX keeps one portrait transcript section per detected slide and skips screenshot extraction. Save this preference in a profile, or explicitly enable screenshots again, with:
+
+```bash
+slides-docx build lecture.mp4 lecture.vtt --profile university --no-slide-images
+slides-docx build lecture.mp4 lecture.vtt --profile university --slide-images
 ```
 
 Short slides are handled automatically by selecting a frame within the slide interval. The final slide uses the end of the video.

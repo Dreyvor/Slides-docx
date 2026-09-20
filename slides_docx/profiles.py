@@ -16,7 +16,7 @@ from .errors import SlidesDocxError
 PROFILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 PROFILE_SETTING_KEYS = {
     "detect": {"threshold", "min_gap", "contact_sheet"},
-    "build": {"lead"},
+    "build": {"lead", "slide_images"},
 }
 
 
@@ -107,7 +107,7 @@ def _validate_settings(settings, profile_name, path):
             )
         for setting, value in values.items():
             key = f"{command}.{setting}"
-            if setting == "contact_sheet":
+            if setting in {"contact_sheet", "slide_images"}:
                 valid = isinstance(value, bool)
             else:
                 valid = (

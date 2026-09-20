@@ -75,6 +75,14 @@ class GuiTests(unittest.TestCase):
         self.assertEqual(window.pages.currentIndex(), 2)
         window.close()
 
+    def test_disabling_slide_images_disables_screenshot_lead(self):
+        window = MainWindow(ProfileStore(self.root / "config.json"))
+        self.assertTrue(window.slide_images.isChecked())
+        self.assertTrue(window.lead.isEnabled())
+        window.slide_images.setChecked(False)
+        self.assertFalse(window.lead.isEnabled())
+        window.close()
+
     def test_theme_follows_explicit_system_color_scheme(self):
         self.assertIs(
             system_theme(self.application, Qt.ColorScheme.Dark), DARK_THEME

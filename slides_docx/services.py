@@ -26,6 +26,7 @@ DEFAULT_THRESHOLD = 12.0
 DEFAULT_MIN_GAP = MIN_SCENE_CHANGE_GAP
 DEFAULT_CONTACT_SHEET = True
 DEFAULT_LEAD = 5.0
+DEFAULT_SLIDE_IMAGES = True
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,7 @@ class BuildRequest:
     slide_times: Path | None = None
     output: Path | None = None
     lead: float | None = None
+    slide_images: bool | None = None
     course_date: date | None = None
     crop: str | None = None
     profile: str | None = None
@@ -154,6 +156,15 @@ def persist_explicit_settings(store, profile_name, command, explicit):
     updates = {key: value for key, value in explicit.items() if value is not None}
     if updates:
         store.update_settings(profile_name, command, updates)
+
+
+def ensure_output_suffix(path, suffix, accepted_suffixes=()):
+    """Append the generated format's suffix unless the path already uses one."""
+    path = Path(path)
+    accepted = {suffix.lower(), *(value.lower() for value in accepted_suffixes)}
+    if path.suffix.lower() not in accepted:
+        path = path.with_name(path.name + suffix)
+    return path
 
 
 def extract_preview(request, progress=None, cancel=None):
@@ -209,8 +220,9 @@ def detect_slides(request, store=None, progress=None, cancel=None):
             "contact_sheet": DEFAULT_CONTACT_SHEET,
         },
     )
-    output = request.output or video.with_name(f"{video.stem}.slide-times.txt")
-    output = Path(output)
+    output = ensure_output_suffix(
+        request.output or video.with_name(f"{video.stem}.slide-times.txt"), ".txt"
+    )
     if output.resolve() == video.resolve():
         raise SlidesDocxError("Timestamp output must differ from the video path.")
 
@@ -233,9 +245,11 @@ def detect_slides(request, store=None, progress=None, cancel=None):
     write_timestamp_file(output, times, selection)
     contact_output = None
     if settings["contact_sheet"]:
-        contact_output = Path(
+        contact_output = ensure_output_suffix(
             request.contact_output
-            or video.with_name(f"{video.stem}.contact-sheet.jpg")
+            or video.with_name(f"{video.stem}.contact-sheet.jpg"),
+            ".jpg",
+            (".jpeg",),
         )
         _emit(
             progress,
@@ -293,15 +307,15 @@ def build_docx(request, store=None, progress=None, cancel=None):
         no_crop=request.no_crop,
         timestamp_metadata=metadata,
     )
-    explicit = {"lead": request.lead}
+    explicit = {"lead": request.lead, "slide_images": request.slide_images}
     settings = resolve_command_settings(
         store,
         selection.profile_name,
         "build",
         explicit,
-        {"lead": DEFAULT_LEAD},
+        {"lead": DEFAULT_LEAD, "slide_images": DEFAULT_SLIDE_IMAGES},
     )
-    output = Path(request.output or video.with_suffix(".docx"))
+    output = ensure_output_suffix(request.output or video.with_suffix(".docx"), ".docx")
     if request.course_date:
         output = output.with_name(
             request.course_date.strftime("%Y_%m_%d-") + output.name
@@ -322,6 +336,7 @@ def build_docx(request, store=None, progress=None, cancel=None):
         info.duration,
         output,
         lead=settings["lead"],
+        include_slide_images=settings["slide_images"],
         crop=selection.ffmpeg_value,
         progress=build_progress,
         cancel=cancel,

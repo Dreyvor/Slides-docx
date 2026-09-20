@@ -35,6 +35,7 @@ from ..services import (
     DEFAULT_CONTACT_SHEET,
     DEFAULT_LEAD,
     DEFAULT_MIN_GAP,
+    DEFAULT_SLIDE_IMAGES,
     DEFAULT_THRESHOLD,
     BuildRequest,
     CancellationToken,
@@ -322,9 +323,15 @@ class MainWindow(QMainWindow):
         self.lead.setRange(0, 3600)
         self.lead.setValue(DEFAULT_LEAD)
         self.lead.setSuffix(" s")
-        self.save_build_settings = QCheckBox("Save lead time in the selected profile")
+        self.slide_images = QCheckBox("Include slide screenshots in the DOCX")
+        self.slide_images.setChecked(DEFAULT_SLIDE_IMAGES)
+        self.slide_images.toggled.connect(self.lead.setEnabled)
+        self.save_build_settings = QCheckBox(
+            "Save these document settings in the selected profile"
+        )
         form.addRow("", self.use_date)
         form.addRow("Course date", self.course_date)
+        form.addRow("", self.slide_images)
         form.addRow("Screenshot lead", self.lead)
         form.addRow("", self.save_build_settings)
         layout.addWidget(Collapsible("Advanced document settings", advanced))
@@ -467,6 +474,9 @@ class MainWindow(QMainWindow):
             detect.get("contact_sheet", DEFAULT_CONTACT_SHEET)
         )
         self.lead.setValue(build.get("lead", DEFAULT_LEAD))
+        self.slide_images.setChecked(
+            build.get("slide_images", DEFAULT_SLIDE_IMAGES)
+        )
 
     def _load_preview(self):
         if not Path(self.video_path.text()).is_file():
@@ -571,6 +581,9 @@ class MainWindow(QMainWindow):
 
     def _detection_ready(self, result):
         self.detect_result = result
+        self.times_output.setText(result.slide_times)
+        if result.contact_sheet:
+            self.contact_output.setText(result.contact_sheet)
         self.detect_summary.setText(
             f"Detected {result.slide_count} slides. Review the contact sheet before building."
         )
@@ -610,6 +623,7 @@ class MainWindow(QMainWindow):
             slide_times=self.detect_result.slide_times,
             output=Path(self.docx_output.text()),
             lead=self.lead.value(),
+            slide_images=self.slide_images.isChecked(),
             course_date=selected_date,
             persist_profile_settings=self.save_build_settings.isChecked(),
             settings_profile=settings_profile,
@@ -624,8 +638,14 @@ class MainWindow(QMainWindow):
 
     def _build_ready(self, result):
         self.build_result = result
+        self.docx_output.setText(result.output)
+        content = (
+            "slides with editable transcript text"
+            if result.settings["slide_images"]
+            else "transcript-only slide sections"
+        )
         self.done_label.setText(
-            f"Created {result.output.name}\n{result.slide_count} slides with editable transcript text"
+            f"Created {result.output.name}\n{result.slide_count} {content}"
         )
         self.open_docx_button.setEnabled(True)
         self.open_folder_button.setEnabled(True)

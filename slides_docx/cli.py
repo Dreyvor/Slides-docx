@@ -115,6 +115,7 @@ def create_parser():
     detect = commands.add_parser("detect", help="Detect slide-change timestamps")
     detect.add_argument("video", type=Path)
     detect.add_argument("--output", type=Path, help="Timestamp output path")
+    detect.add_argument("--contact-output", type=Path, help="Contact-sheet output path")
     detect.add_argument(
         "--threshold",
         type=threshold_value,
@@ -151,6 +152,12 @@ def create_parser():
         type=lead_value,
         default=None,
         help="Screenshot lead time in seconds (built-in default: 5)",
+    )
+    build.add_argument(
+        "--slide-images",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Include or omit slide screenshots in the DOCX (built-in default: included)",
     )
     build.add_argument("--date", type=course_date, metavar="DD.MM.YYYY")
     add_crop_arguments(build)
@@ -222,6 +229,7 @@ def handle_detect(args):
         DetectRequest(
             video=args.video,
             output=args.output,
+            contact_output=args.contact_output,
             threshold=args.threshold,
             min_gap=args.min_gap,
             contact_sheet=args.contact_sheet,
@@ -253,6 +261,7 @@ def handle_build(args):
             slide_times=args.slide_times,
             output=args.output,
             lead=args.lead,
+            slide_images=args.slide_images,
             course_date=args.date,
             crop=args.crop,
             profile=args.profile,
@@ -318,6 +327,9 @@ def _format_profile_settings(profile):
         values.append(f"contact-sheet={enabled}")
     if "lead" in build:
         values.append(f"lead={build['lead']:g}")
+    if "slide_images" in build:
+        enabled = "yes" if build["slide_images"] else "no"
+        values.append(f"slide-images={enabled}")
     return f"; settings: {', '.join(values)}" if values else ""
 
 
