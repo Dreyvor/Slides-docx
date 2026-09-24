@@ -24,7 +24,7 @@ plugins =
 
 [nuitka]
 mode = standalone
-extra_args = --quiet --github-workflow-options --noinclude-qt-translations --include-package=slides_docx --include-package=cv2 --include-package=numpy --include-package=docx --include-package=platformdirs --include-package-data=slides_docx.gui
+extra_args = --quiet --noinclude-qt-translations --include-package=slides_docx --include-package=cv2 --include-package=numpy --include-package=docx --include-package=platformdirs --include-package=requests --include-package-data=slides_docx.ai.prompts --include-package-data=slides_docx.gui
 
 [buildozer]
 mode = debug
